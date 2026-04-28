@@ -1,0 +1,114 @@
+name: imbonesha
+
+services:
+  db:
+    image: postgis/postgis:15-3.4
+    environment:
+      POSTGRES_USER: imbonesha
+      POSTGRES_PASSWORD: imbonesha_dev
+      POSTGRES_DB: imbonesha
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "5439:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U imbonesha" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6386:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: imbonesha
+      MINIO_ROOT_PASSWORD: imbonesha_dev
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9007:9000"
+      - "9008:9001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      DATABASE_URL: postgis://imbonesha:imbonesha_dev@db:5432/imbonesha
+      REDIS_URL: redis://redis:6379/0
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      PERMIT_SERVICE_URL: http://permit-service:8001
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: imbonesha
+      MINIO_SECRET_KEY: imbonesha_dev
+      DJANGO_SECRET_KEY: dev-secret-not-for-production
+      DJANGO_DEBUG: "true"
+    volumes:
+      - ../api:/app
+    ports:
+      - "8007:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    command: celery -A config worker --loglevel=info
+    environment:
+      DATABASE_URL: postgis://imbonesha:imbonesha_dev@db:5432/imbonesha
+      REDIS_URL: redis://redis:6379/0
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      PERMIT_SERVICE_URL: http://permit-service:8001
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: imbonesha
+      MINIO_SECRET_KEY: imbonesha_dev
+      DJANGO_SECRET_KEY: dev-secret-not-for-production
+    volumes:
+      - ../api:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  permit-service:
+    build:
+      context: ../mock-services/permit-service
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    environment:
+      DATABASE_URL: postgresql+asyncpg://imbonesha:imbonesha_dev@db:5432/permit_mock
+      INJECT_LATENCY_MS: "300"
+      ERROR_RATE: "0.05"
+    volumes:
+      - ../mock-services/permit-service:/app
+    ports:
+      - "8015:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  minio_data:
