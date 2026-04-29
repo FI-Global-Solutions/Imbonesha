@@ -55,6 +55,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       DJANGO_SETTINGS_MODULE: config.settings.dev
       PERMIT_SERVICE_URL: http://permit-service:8001
+      ML_SERVICE_URL: http://ml-service:8002
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: imbonesha
       MINIO_SECRET_KEY: imbonesha_dev
@@ -80,17 +81,40 @@ services:
       REDIS_URL: redis://redis:6379/0
       DJANGO_SETTINGS_MODULE: config.settings.dev
       PERMIT_SERVICE_URL: http://permit-service:8001
+      ML_SERVICE_URL: http://ml-service:8002
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: imbonesha
       MINIO_SECRET_KEY: imbonesha_dev
       DJANGO_SECRET_KEY: dev-secret-not-for-production
     volumes:
       - ../api:/app
+      - ../ml/sample_imagery:/ml_imagery:ro
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  ml-service:
+    build:
+      context: ../ml
+      dockerfile: Dockerfile
+    environment:
+      CHECKPOINT_PATH: /app/checkpoints/siamese_unet_levir_v0.pth
+      DETECTION_THRESHOLD: "0.5"
+      LOG_LEVEL: INFO
+    volumes:
+      - ../ml/app:/app/app
+      - ../ml/checkpoints:/app/checkpoints
+      - ../ml/sample_imagery:/app/sample_imagery:ro
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   permit-service:
     build:

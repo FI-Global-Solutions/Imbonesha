@@ -32,7 +32,14 @@ INSTALLED_APPS = [
     "django_filters",
     # Imbonesha apps
     "core",
+    "accounts",
+    "parcels",
+    "imagery",
+    "detections",
+    "flags",
 ]
+
+AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -89,6 +96,17 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Cache — used by the permit verification adapter to cut load on KUBAKA / mock.
+# In production we'd use Redis directly here too. Locmem is fine for dev and
+# for tests since each process gets its own cache.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env.str("REDIS_URL", default="redis://redis:6379/1"),
+        "KEY_PREFIX": "imbonesha",
+    },
+}
+
 # DRF
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -117,6 +135,7 @@ CELERY_TIMEZONE = TIME_ZONE
 # External services
 PERMIT_SERVICE_URL = env.str("PERMIT_SERVICE_URL", default="http://permit-service:8001")
 PERMIT_ADAPTER = env.str("PERMIT_ADAPTER", default="mock")  # "mock" or "kubaka"
+ML_SERVICE_URL = env.str("ML_SERVICE_URL", default="http://ml-service:8002")
 
 # MinIO / S3
 MINIO_ENDPOINT = env.str("MINIO_ENDPOINT", default="minio:9000")

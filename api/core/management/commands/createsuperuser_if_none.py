@@ -23,8 +23,12 @@ class Command(BaseCommand):
         email = os.environ.get("DJANGO_SUPERUSER_EMAIL", "admin@imbonesha.local")
         password = os.environ.get("DJANGO_SUPERUSER_PASSWORD", "changeme")
 
+        # USERNAME_FIELD is "email" but AbstractUser.UserManager still requires
+        # username as the first positional argument to create_superuser.
+        # Use the email prefix as the username to keep it human-readable.
+        username = email.split("@")[0]
         User.objects.create_superuser(
-            username=email,
+            username=username,
             email=email,
             password=password,
         )
