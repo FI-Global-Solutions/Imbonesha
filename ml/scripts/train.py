@@ -42,7 +42,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 CHECKPOINT_DIR = Path(__file__).resolve().parents[1] / "checkpoints"
-CHECKPOINT_PATH = CHECKPOINT_DIR / "siamese_unet_levir_v0.pth"
+# Default output name — overridden via --output-name CLI flag.
+_DEFAULT_CHECKPOINT_NAME = "siamese_unet_v1.pth"
 LOG_PATH = CHECKPOINT_DIR / "train_log.jsonl"
 
 IMG_SIZE = 256
@@ -227,8 +228,10 @@ def train(
     batch_size: int,
     lr: float,
     device_str: str,
+    output_name: str = _DEFAULT_CHECKPOINT_NAME,
 ) -> None:
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = CHECKPOINT_DIR / output_name
 
     device = torch.device(device_str)
     logger.info("Training on %s", device)
@@ -278,7 +281,7 @@ def train(
 
         if val_metrics["iou"] > best_iou:
             best_iou = val_metrics["iou"]
-            torch.save(model.state_dict(), CHECKPOINT_PATH)
+            torch.save(model.state_dict(), checkpoint_path)
             logger.info("  → Saved new best checkpoint (val_iou=%.4f)", best_iou)
 
     # Write training log.
@@ -287,7 +290,7 @@ def train(
             f.write(json.dumps(row) + "\n")
 
     logger.info("Training complete. Best val IoU: %.4f", best_iou)
-    logger.info("Checkpoint: %s", CHECKPOINT_PATH)
+    logger.info("Checkpoint: %s", checkpoint_path)
     logger.info("Log:        %s", LOG_PATH)
 
 
@@ -304,6 +307,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--device", type=str, default=_pick_device())
+    p.add_argument("--output-name", type=str, default=_DEFAULT_CHECKPOINT_NAME,
+                   help="Checkpoint filename (saved under ml/checkpoints/)")
     return p.parse_args()
 
 
@@ -316,4 +321,5 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         lr=args.lr,
         device_str=args.device,
+        output_name=args.output_name,
     )

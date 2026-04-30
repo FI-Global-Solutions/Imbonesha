@@ -92,9 +92,13 @@ class SiameseUNet(nn.Module):
         diff2 = torch.abs(t1_e2 - t2_e2)
         diff1 = torch.abs(t1_e1 - t2_e1)
 
-        b = self.bottleneck(self.pool(diff3))
+        # diff3 is at 1/4 spatial resolution (after two pool ops in the encoder).
+        # Pass through bottleneck in place — no extra pooling needed.
+        b = self.bottleneck(diff3)
 
+        # up2: 1/4 → 1/2, concat with diff2 (also 1/2)
         d2 = self.dec2(torch.cat([self.up2(b), diff2], dim=1))
+        # up1: 1/2 → 1/1, concat with diff1 (also 1/1)
         d1 = self.dec1(torch.cat([self.up1(d2), diff1], dim=1))
 
         return self.head(d1)

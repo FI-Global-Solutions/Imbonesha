@@ -149,6 +149,37 @@ def _download_scene(cog_path: str, dest_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
+def _extract_geotransform(local_path: Path) -> dict[str, float] | None:
+    """Read the affine geo-transform from a GeoTIFF using rasterio.
+
+    Returns a dict compatible with _pixel_polygon_to_wgs84, or None if the
+    file is not a GeoTIFF or rasterio is not available.
+    """
+    if local_path.suffix.lower() not in (".tif", ".tiff", ".cog"):
+        return None
+    try:
+        import rasterio  # type: ignore
+
+        with rasterio.open(local_path) as src:
+            tf = src.transform  # affine.Affine
+            # Affine: (pixel_size_x, 0, origin_x, 0, pixel_size_y, origin_y)
+            # origin_x/y is the top-left corner; pixel_size_y is negative.
+            origin_lng = tf.c
+            origin_lat = tf.f  # top-left lat (row 0 = north)
+            pixel_size_m_x = abs(tf.a) * 111_000.0  # deg → m (approx)
+            pixel_size_m_y = abs(tf.e) * 111_000.0
+            pixel_size_m = (pixel_size_m_x + pixel_size_m_y) / 2.0
+            return {
+                "origin_lng": origin_lng,
+                "origin_lat": origin_lat,
+                "pixel_size_m": pixel_size_m,
+                "metres_per_degree": 111_000.0,
+            }
+    except Exception as exc:
+        logger.warning("Could not read geo-transform from %s: %s", local_path, exc)
+        return None
+
+
 def _pixel_polygon_to_wgs84(
     pixel_coords: list[tuple[float, float]],
     transform: dict[str, float] | None,
@@ -179,8 +210,10 @@ def _pixel_polygon_to_wgs84(
 
     deg_per_pixel = pixel_size_m / m_per_deg
 
+    # Row 0 is the TOP (north) of the image; row increases downward.
+    # Latitude increases northward, so each additional row subtracts from lat.
     wgs84_coords = [
-        (origin_lng + col * deg_per_pixel, origin_lat + row * deg_per_pixel)
+        (origin_lng + col * deg_per_pixel, origin_lat - row * deg_per_pixel)
         for col, row in pixel_coords
     ]
     return Polygon(wgs84_coords, srid=4326)
@@ -200,16 +233,28 @@ def _run_pipeline(job: DetectionJob) -> int:
     adapter = get_permit_adapter()
     flags_created = 0
 
+    # Load geo-transform: prefer scene metadata first (fast path), then fall
+    # back to reading the GeoTIFF header while the temp file is still on disk.
+    meta1 = job.t1_scene.metadata or {}
+    transform = meta1.get("geo_transform")
+
     with tempfile.TemporaryDirectory(prefix="imbonesha_detect_") as tmp_dir:
         tmp = Path(tmp_dir)
 
         t1_local = _download_scene(job.t1_scene.cog_path, tmp)
         t2_local = _download_scene(job.t2_scene.cog_path, tmp)
 
-        # The ml-service receives filesystem paths that are valid *inside its
-        # container*.  In docker-compose, ml/sample_imagery is mounted at
-        # /app/sample_imagery in the ml-service container.  We store the
-        # container-relative path in ImageScene.cog_path for sample scenes.
+        # Extract geo-transform from GeoTIFF header while the file is on disk.
+        if transform is None:
+            transform = _extract_geotransform(t1_local)
+            if transform is not None:
+                # Cache into metadata so subsequent runs skip the rasterio read.
+                job.t1_scene.metadata = {**meta1, "geo_transform": transform}
+                job.t1_scene.save(update_fields=["metadata"])
+                logger.info("Cached geo-transform from GeoTIFF into ImageScene.metadata")
+
+        # The ml-service receives filesystem paths valid *inside its container*.
+        # In docker-compose, ml/sample_imagery is mounted at /app/sample_imagery.
         ml_t1 = str(t1_local)
         ml_t2 = str(t2_local)
 
@@ -219,10 +264,6 @@ def _run_pipeline(job: DetectionJob) -> int:
             raise RuntimeError(
                 f"ml-service unavailable after retries: {exc}"
             ) from exc
-
-    # Load geo-transform from scene metadata if present.
-    meta1 = job.t1_scene.metadata or {}
-    transform = meta1.get("geo_transform")  # set by seed_sample_scenes
 
     for poly_data in polygons:
         pixel_coords = poly_data["polygon"]

@@ -244,40 +244,65 @@ class _FakePermitAdapter:
 # actual WGS84 footprint coordinates directly as "pixel" coords.
 # ---------------------------------------------------------------------------
 
+# Test transform: one pixel == one PARCEL_SIZE_DEG.
+# origin_lat is set to the TOP (north) edge of the grid so that
+#   lat = origin_lat - row_px * deg_per_pixel = ANCHOR_LAT + (GRID_ROWS - row_px) * PARCEL_SIZE_DEG
+# Setting origin_lat = ANCHOR_LAT + GRID_ROWS * PARCEL_SIZE_DEG ensures that
+# pixel (row=0, col=0) maps to (ANCHOR_LNG, ANCHOR_LAT + GRID_ROWS * PARCEL_SIZE_DEG).
+# A parcel at grid (row=R, col=C) has its south-west corner at
+#   lat_s = ANCHOR_LAT + R * PARCEL_SIZE_DEG
+#   lng_w = ANCHOR_LNG + C * PARCEL_SIZE_DEG
+# In pixel space that parcel's south-west corner is at pixel row = GRID_ROWS - R, col = C.
 _TEST_TRANSFORM = {
-    "origin_lng": 0.0,
-    "origin_lat": 0.0,
-    "pixel_size_m": 111_000.0,
+    "origin_lng": ANCHOR_LNG,
+    "origin_lat": ANCHOR_LAT + GRID_ROWS * PARCEL_SIZE_DEG,
+    "pixel_size_m": PARCEL_SIZE_DEG * 111_000.0,
     "metres_per_degree": 111_000.0,
 }
-# With this transform: lng = 0.0 + col * 1.0, lat = 0.0 + row * 1.0
-# So polygon in pixel (x, y) space maps directly to (x, y) in WGS84.
 
 
-def _footprint_wgs84_as_pixels(row: int, col: int) -> list[list[float]]:
-    """Return footprint polygon coords in WGS84 (which == pixel with test transform).
+def _footprint_as_pixel_coords(row: int, col: int) -> list[list[float]]:
+    """Return footprint corners in pixel space for the test transform.
 
-    _footprint_polygon returns a django GEOSGeometry Polygon; coords are
-    accessed via poly[0] (the exterior ring) which is a LinearRing.
+    For a parcel at grid (row, col):
+      pixel_col = col + margin_frac          (left edge + margin)
+      pixel_row = (GRID_ROWS - row) - 1 + margin_frac  (inverted row, south edge)
+
+    We return a closed 5-point rectangle matching the 80% footprint.
     """
-    poly = _footprint_polygon(row, col)
-    # poly[0] is the exterior LinearRing; it supports iteration over (x, y) tuples.
-    return [[x, y] for x, y in poly[0]]
+    margin_frac = (1.0 - FOOTPRINT_FRAC) / 2.0
+    # Pixel column: col + margin within the parcel cell
+    px_col0 = col + margin_frac
+    px_col1 = col + margin_frac + FOOTPRINT_FRAC
+    # Pixel row: grid row 0 is SOUTH, so in pixel space (where 0=NORTH) it's
+    # GRID_ROWS - row. The south edge of parcel row R is at pixel row GRID_ROWS - R.
+    # The 80% footprint south edge is at pixel row GRID_ROWS - row - margin_frac.
+    # The north edge (smaller pixel row) is at GRID_ROWS - row - 1 + margin_frac.
+    px_row_s = GRID_ROWS - row - margin_frac          # south (larger pixel row)
+    px_row_n = GRID_ROWS - row - 1.0 + margin_frac    # north (smaller pixel row)
+
+    # Return (col, row) pairs = (x, y) as expected by _pixel_polygon_to_wgs84
+    return [
+        [px_col0, px_row_s],
+        [px_col1, px_row_s],
+        [px_col1, px_row_n],
+        [px_col0, px_row_n],
+        [px_col0, px_row_s],  # closed
+    ]
 
 
 def _fake_ml_polygons() -> list[dict]:
-    """Return 6 polygon dicts corresponding to the 6 scenario cells.
+    """Return 6 polygon dicts (pixel coords) corresponding to the 6 scenario cells.
 
-    NOTE on wrong_category: the new pipeline always uses ChangeType.NEW_BUILDING
-    (the ml-service doesn't yet return change_type metadata).  So wrong_category
-    parcels get severity=LOW (they have an active permit + new_building detection).
-    Session 4 will add change_type to the ml-service response so the mismatch
-    can be detected.  The test for wrong_category is updated accordingly.
+    NOTE on wrong_category: the pipeline always emits ChangeType.NEW_BUILDING
+    (the ml-service doesn't yet return change_type per polygon).  So
+    wrong_category parcels get severity=LOW (active permit + new_building).
+    Session 5 will add change_type to the ml-service response.
     """
     results = []
     for row, col, scenario in _SCENARIO_CELLS:
         results.append({
-            "polygon": _footprint_wgs84_as_pixels(row, col),
+            "polygon": _footprint_as_pixel_coords(row, col),
             "confidence": 0.92,
             "area_sqm": FOOTPRINT_AREA_SQM,
         })
