@@ -61,8 +61,10 @@ services:
       MINIO_SECRET_KEY: imbonesha_dev
       DJANGO_SECRET_KEY: dev-secret-not-for-production
       DJANGO_DEBUG: "true"
+      SHARED_IMAGERY_DIR: /shared/imagery
     volumes:
       - ../api:/app
+      - shared_imagery:/shared/imagery
     ports:
       - "8007:8000"
     depends_on:
@@ -86,9 +88,10 @@ services:
       MINIO_ACCESS_KEY: imbonesha
       MINIO_SECRET_KEY: imbonesha_dev
       DJANGO_SECRET_KEY: dev-secret-not-for-production
+      SHARED_IMAGERY_DIR: /shared/imagery
     volumes:
       - ../api:/app
-      - ../ml/sample_imagery:/ml_imagery:ro
+      - shared_imagery:/shared/imagery
     depends_on:
       db:
         condition: service_healthy
@@ -100,13 +103,15 @@ services:
       context: ../ml
       dockerfile: Dockerfile
     environment:
-      CHECKPOINT_PATH: /app/checkpoints/siamese_unet_v1.pth
+      CHECKPOINT_PATH: /app/checkpoints/siamese_unet_v2.pth
       DETECTION_THRESHOLD: "0.5"
       LOG_LEVEL: INFO
     volumes:
       - ../ml/app:/app/app
       - ../ml/checkpoints:/app/checkpoints
-      - ../ml/sample_imagery:/app/sample_imagery:ro
+      - shared_imagery:/shared/imagery
+      - ../ml/data:/app/data:ro
+      - ../ml/scripts:/app/scripts:ro
     ports:
       - "8002:8002"
     healthcheck:
@@ -136,3 +141,4 @@ services:
 volumes:
   db_data:
   minio_data:
+  shared_imagery:

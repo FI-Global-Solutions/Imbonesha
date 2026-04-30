@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    checkpoint_path: str = "/app/checkpoints/siamese_unet_v1.pth"
+    checkpoint_path: str = "/app/checkpoints/siamese_unet_v2.pth"
     detection_threshold: float = 0.5
     min_polygon_sqm: float = 50.0
     max_polygon_sqm: float = 10_000.0

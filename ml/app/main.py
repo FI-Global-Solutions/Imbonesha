@@ -167,7 +167,7 @@ async def detect(req: DetectRequest) -> DetectResponse:
 
     return DetectResponse(
         polygons=[PolygonResult(**p) for p in polygons],
-        model_version="siamese-unet-v0",
+        model_version="siamese-unet-v2",
         inference_ms=round(elapsed_ms, 1),
         checkpoint_loaded=_detector.checkpoint_loaded,
     )

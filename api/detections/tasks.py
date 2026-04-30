@@ -36,16 +36,14 @@ Fallback behaviour:
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
-import math
 import tempfile
 from pathlib import Path
 from typing import Any
 
 import httpx
 from celery import shared_task
-from django.contrib.gis.geos import Point, Polygon
+from django.contrib.gis.geos import Polygon
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -224,46 +222,57 @@ def _pixel_polygon_to_wgs84(
 # ---------------------------------------------------------------------------
 
 
+def _shared_imagery_dir() -> Path:
+    """Return the shared imagery directory accessible by both worker and ml-service.
+
+    In docker-compose both services mount the same named volume at /shared/imagery,
+    so paths written here by the worker can be read by the ml-service without any
+    path translation. Falls back to a system tempdir when running tests on the host.
+    """
+    shared = Path(getattr(settings, "SHARED_IMAGERY_DIR", "/shared/imagery"))
+    if shared.exists():
+        return shared
+    # Host / test fallback: use a stable tempdir so paths survive across calls.
+    fallback = Path(tempfile.gettempdir()) / "imbonesha_shared_imagery"
+    fallback.mkdir(exist_ok=True)
+    return fallback
+
+
 def _run_pipeline(job: DetectionJob) -> int:
     """Run the full detection pipeline for a job.
 
-    Downloads scenes, calls ml-service, upserts Detections and Flags.
-    Returns the number of new Flags created.
+    Downloads scenes to /shared/imagery/{job_id}/ — a volume mounted identically
+    in the worker and ml-service containers so the ml-service can read the same paths
+    the worker writes. Returns the number of new Flags created.
     """
     adapter = get_permit_adapter()
     flags_created = 0
 
-    # Load geo-transform: prefer scene metadata first (fast path), then fall
-    # back to reading the GeoTIFF header while the temp file is still on disk.
+    # Prepare a per-job directory on the shared volume.
+    job_dir = _shared_imagery_dir() / str(job.pk)
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load geo-transform: prefer scene metadata (fast path), else read GeoTIFF header.
     meta1 = job.t1_scene.metadata or {}
     transform = meta1.get("geo_transform")
 
-    with tempfile.TemporaryDirectory(prefix="imbonesha_detect_") as tmp_dir:
-        tmp = Path(tmp_dir)
+    t1_local = _download_scene(job.t1_scene.cog_path, job_dir)
+    t2_local = _download_scene(job.t2_scene.cog_path, job_dir)
 
-        t1_local = _download_scene(job.t1_scene.cog_path, tmp)
-        t2_local = _download_scene(job.t2_scene.cog_path, tmp)
+    if transform is None:
+        transform = _extract_geotransform(t1_local)
+        if transform is not None:
+            job.t1_scene.metadata = {**meta1, "geo_transform": transform}
+            job.t1_scene.save(update_fields=["metadata"])
+            logger.info("Cached geo-transform from GeoTIFF into ImageScene.metadata")
 
-        # Extract geo-transform from GeoTIFF header while the file is on disk.
-        if transform is None:
-            transform = _extract_geotransform(t1_local)
-            if transform is not None:
-                # Cache into metadata so subsequent runs skip the rasterio read.
-                job.t1_scene.metadata = {**meta1, "geo_transform": transform}
-                job.t1_scene.save(update_fields=["metadata"])
-                logger.info("Cached geo-transform from GeoTIFF into ImageScene.metadata")
-
-        # The ml-service receives filesystem paths valid *inside its container*.
-        # In docker-compose, ml/sample_imagery is mounted at /app/sample_imagery.
-        ml_t1 = str(t1_local)
-        ml_t2 = str(t2_local)
-
-        try:
-            polygons = _call_ml_service(ml_t1, ml_t2)
-        except (httpx.HTTPError, httpx.TimeoutException) as exc:
-            raise RuntimeError(
-                f"ml-service unavailable after retries: {exc}"
-            ) from exc
+    # Both worker and ml-service see /shared/imagery — no path translation needed.
+    try:
+        polygons = _call_ml_service(str(t1_local), str(t2_local))
+    except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        raise RuntimeError(
+            f"ml-service unavailable after retries: {exc}"
+        ) from exc
 
     for poly_data in polygons:
         pixel_coords = poly_data["polygon"]
@@ -386,7 +395,7 @@ def run_detection_job(self, t1_scene_id: int, t2_scene_id: int) -> dict:
         t1_scene=t1_scene,
         t2_scene=t2_scene,
         status=JobStatus.RUNNING,
-        model_version="siamese-unet-v0",
+        model_version="siamese-unet-v2",
         started_at=timezone.now(),
     )
 

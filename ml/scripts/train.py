@@ -32,11 +32,22 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
-# Add the repo root to sys.path so we can import ml.app.
+# Support two layouts:
+#   Host:      repo_root/ml/scripts/train.py  → import ml.app.inference
+#   Container: /app/scripts/train.py          → import app.inference
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ml.app.inference import SiameseUNet, _pick_device  # noqa: E402
+_scripts_dir = Path(__file__).resolve().parent
+_ml_dir = _scripts_dir.parent          # repo/ml  or  /app
+_repo_root = _ml_dir.parent            # repo     or  /
+
+sys.path.insert(0, str(_repo_root))    # enables ml.app.inference on host
+sys.path.insert(0, str(_ml_dir))       # enables app.inference in container
+
+try:
+    from ml.app.inference import SiameseUNet, _pick_device  # noqa: E402
+except ModuleNotFoundError:
+    from app.inference import SiameseUNet, _pick_device  # noqa: E402  # container
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

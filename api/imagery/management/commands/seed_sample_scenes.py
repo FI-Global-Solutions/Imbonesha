@@ -59,9 +59,11 @@ IMG_SIZE = 256
 PIXEL_SIZE_M = (PARCEL_SIZE_DEG * GRID_COLS * 111_000) / IMG_SIZE  # ≈ 1.56 m/px
 METRES_PER_DEGREE = 111_000.0
 
-# Geo-transform origin: bottom-left corner of the grid (with 1-parcel margin).
+# Geo-transform origin: TOP-LEFT corner of the image (row 0 = north).
+# After the session 4 sign fix: lat = origin_lat - row * deg_per_pixel,
+# so origin_lat must be the NORTHERN edge of the image, not the southern.
 ORIGIN_LNG = ANCHOR_LNG - PARCEL_SIZE_DEG * 0.5
-ORIGIN_LAT = ANCHOR_LAT - PARCEL_SIZE_DEG * 0.5
+ORIGIN_LAT = ANCHOR_LAT + (GRID_ROWS + 0.5) * PARCEL_SIZE_DEG  # north edge
 
 # Parcel positions in pixel space (centre of each parcel cell).
 # col_px = (parcel_lng_centre - ORIGIN_LNG) / deg_per_pixel

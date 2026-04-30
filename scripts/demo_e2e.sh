@@ -28,8 +28,8 @@ else
   SEED_OUTPUT=$($API python manage.py seed_sample_scenes 2>&1)
   echo "$SEED_OUTPUT"
 
-  T1_ID=$(echo "$SEED_OUTPUT" | grep -oP 'T1 scene ID:\s+\K[0-9]+')
-  T2_ID=$(echo "$SEED_OUTPUT" | grep -oP 'T2 scene ID:\s+\K[0-9]+')
+  T1_ID=$(echo "$SEED_OUTPUT" | grep 'T1 scene ID:' | grep -o '[0-9]*$')
+  T2_ID=$(echo "$SEED_OUTPUT" | grep 'T2 scene ID:' | grep -o '[0-9]*$')
 
   if [[ -z "$T1_ID" || -z "$T2_ID" ]]; then
     echo "[error] Could not parse scene IDs from seed output. Check above."
