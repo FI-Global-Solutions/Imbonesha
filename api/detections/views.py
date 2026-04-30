@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from rest_framework import mixins, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
 from .models import DetectionJob, JobStatus
 from .serializers import DetectionJobCreateSerializer, DetectionJobSerializer
+
+_ALLOWED_ROLES = {"admin", "district_admin"}
 
 
 class DetectionJobViewSet(
@@ -38,6 +41,11 @@ class DetectionJobViewSet(
     permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs) -> Response:
+        user = request.user
+        user_role = getattr(user, "role", None)
+        if not (getattr(user, "is_superuser", False) or user_role in _ALLOWED_ROLES):
+            raise PermissionDenied("Only admin or district_admin users may create detection jobs.")
+
         in_ser = DetectionJobCreateSerializer(data=request.data)
         in_ser.is_valid(raise_exception=True)
         data = in_ser.validated_data
@@ -51,7 +59,7 @@ class DetectionJobViewSet(
             t1_scene=t1,
             t2_scene=t2,
             status=JobStatus.QUEUED,
-            model_version="siamese-unet-v1",
+            model_version="siamese-unet-v2",
         )
 
         # Enqueue async — if Celery is unavailable, caller gets the job in QUEUED
