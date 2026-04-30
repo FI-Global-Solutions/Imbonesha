@@ -137,9 +137,22 @@ PERMIT_SERVICE_URL = env.str("PERMIT_SERVICE_URL", default="http://permit-servic
 PERMIT_ADAPTER = env.str("PERMIT_ADAPTER", default="mock")  # "mock" or "kubaka"
 ML_SERVICE_URL = env.str("ML_SERVICE_URL", default="http://ml-service:8002")
 
+# SimpleJWT — use email as the login field (matches AUTH_USER_MODEL)
+SIMPLE_JWT = {
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+}
+
+# The default TokenObtainPairView uses USERNAME_FIELD automatically
+# (accounts.User.USERNAME_FIELD = "email"), so no custom serializer needed.
+
 # MinIO / S3
 MINIO_ENDPOINT = env.str("MINIO_ENDPOINT", default="minio:9000")
 MINIO_ACCESS_KEY = env.str("MINIO_ACCESS_KEY", default="imbonesha")
 MINIO_SECRET_KEY = env.str("MINIO_SECRET_KEY", default="imbonesha_dev")
 MINIO_BUCKET = env.str("MINIO_BUCKET", default="imbonesha-imagery")
 MINIO_SECURE = env.bool("MINIO_SECURE", default=False)
+# Public-facing MinIO URL used to rewrite presigned URLs for browser access.
+# In dev this is localhost:9007; in prod it would be the CDN/load balancer URL.
+MINIO_PUBLIC_ENDPOINT = env.str("MINIO_PUBLIC_ENDPOINT", default="http://localhost:9007")
