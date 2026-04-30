@@ -98,28 +98,51 @@ class SyntheticChangeDataset(Dataset):
 
 
 class LevirCDDataset(Dataset):
-    """Load image pairs from a LEVIR-CD directory structure.
+    """Load image pairs from a LEVIR-CD directory.
 
-    Expected layout (after download_levir.py):
-        data/LEVIR-CD/train/A/  — T1 images
-        data/LEVIR-CD/train/B/  — T2 images
-        data/LEVIR-CD/train/label/  — binary PNGs (255=change)
+    Supports two layouts:
+
+    1. Torchgeo flat layout (downloaded via torchgeo's LEVIRCD.download=True):
+         root/A/{split}_*.png
+         root/B/{split}_*.png
+         root/label/{split}_*.png
+
+    2. Split-subdirectory layout (original download_levir.py script):
+         root/{split}/A/*.png
+         root/{split}/B/*.png
+         root/{split}/label/*.png
     """
 
     def __init__(self, root: Path, split: str = "train", img_size: int = IMG_SIZE) -> None:
         self.size = img_size
-        a_dir = root / split / "A"
-        b_dir = root / split / "B"
-        lbl_dir = root / split / "label"
 
-        if not a_dir.exists():
+        # Detect layout: torchgeo flat (root/A/) vs split-subdir (root/split/A/)
+        flat_a = root / "A"
+        subdir_a = root / split / "A"
+
+        if flat_a.exists():
+            # Torchgeo layout: filter by split prefix in filename
+            a_dir, b_dir, lbl_dir = flat_a, root / "B", root / "label"
+            names = sorted(
+                p.name for p in a_dir.iterdir()
+                if p.suffix.lower() in (".png", ".jpg", ".tif")
+                and p.stem.startswith(split)
+            )
+        elif subdir_a.exists():
+            a_dir, b_dir, lbl_dir = subdir_a, root / split / "B", root / split / "label"
+            names = sorted(
+                p.name for p in a_dir.iterdir()
+                if p.suffix.lower() in (".png", ".jpg", ".tif")
+            )
+        else:
             raise FileNotFoundError(
-                f"LEVIR-CD directory not found: {a_dir}\n"
-                "Run: python ml/scripts/download_levir.py"
+                f"LEVIR-CD directory not found at {root}\n"
+                "Run: python ml/scripts/train.py --synthetic  OR\n"
+                "     python -c \"from torchgeo.datasets import LEVIRCD; LEVIRCD(root='ml/data/LEVIR-CD', split='train', download=True)\""
             )
 
-        names = sorted(p.name for p in a_dir.iterdir() if p.suffix.lower() in (".png", ".jpg", ".tif"))
         self.samples = [(a_dir / n, b_dir / n, lbl_dir / n) for n in names]
+        logger.info("LevirCDDataset: %s split, %d pairs from %s", split, len(self.samples), root)
 
     def __len__(self) -> int:
         return len(self.samples)

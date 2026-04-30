@@ -55,28 +55,32 @@ Updated `test_e2e_detection.py` to use corrected pixel-coordinate transform
 
 ### Trained Checkpoint: `ml/checkpoints/siamese_unet_v1.pth`
 
-- **Dataset:** Synthetic (`SyntheticChangeDataset` — 512 random-rectangle pairs)
-- **Epochs:** 5
-- **Device:** MPS (Apple Silicon)
-- **Training time:** ~1 min 49s total
-- **Final val IoU:** 0.9997
-- **Checkpoint size:** 2.9 MB
+Two training runs were completed in sequence. The final checkpoint is from LEVIR-CD.
 
-Training metrics (from `ml/checkpoints/train_log.jsonl`):
+**Run 1 — Synthetic (floor verification):**
+- Dataset: `SyntheticChangeDataset` (512 random-rectangle pairs)
+- Epochs: 5, Device: MPS, Time: 1:49
+- Val IoU: 0.9997 (trivially easy task — verifies architecture is correct)
+
+**Run 2 — LEVIR-CD (real training, overwrites v1.pth):**
+- Dataset: 445 train pairs, 128 test pairs (torchgeo `LEVIRCD` download)
+- Epochs: 5, Device: MPS, Time: 4:17, Checkpoint size: 2.9 MB
+- **The model demonstrably learned** — IoU went from 0.12 (epoch 1) to 0.46 (epoch 4)
 
 | Epoch | Train Loss | Train IoU | Val IoU |
 |-------|-----------|-----------|---------|
-| 1     | 0.9386    | 0.9149    | 0.9686  |
-| 2     | 0.6334    | 0.9904    | 0.9992  |
-| 3     | 0.4746    | 0.9940    | 0.9992  |
-| 4     | 0.4066    | 0.9993    | 0.9996  |
-| 5     | 0.3836    | 0.9995    | 0.9997  |
+| 1     | 1.4767    | 0.2626    | 0.1249  |
+| 2     | 1.2435    | 0.4312    | 0.3568  |
+| 3     | 1.1028    | 0.4921    | 0.3923  |
+| 4     | 0.9973    | 0.5500    | **0.4552** |
+| 5     | 0.9493    | 0.5904    | 0.4299  |
 
-Val IoU 0.9997 on synthetic data reflects that the model correctly learns the
-task (detect bright rectangles added to a background) — **not** that it generalizes
-to real satellite imagery. The numbers are expected given the trivial synthetic task.
+Best checkpoint saved at epoch 4 (val IoU 0.4552). Epoch 5 slightly overfit.
+Val IoU 0.45 after 5 epochs on a ~4-minute MPS run is within the expected range
+for this architecture on LEVIR-CD. SOTA is ~0.85–0.91 with deeper networks and
+10× more training.
 
-The ml-service now reports `checkpoint_loaded: true` at `/health`.
+The ml-service reports `checkpoint_loaded: true` at `/health` with the LEVIR-CD weights.
 
 ### Geo-transform from GeoTIFF (`_extract_geotransform`)
 
