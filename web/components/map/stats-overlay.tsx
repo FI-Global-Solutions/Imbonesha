@@ -17,25 +17,25 @@ export function StatsOverlay({ flags }: Props) {
   const awaiting = flags.filter((f) => f.status === "pending" || f.status === "assigned").length;
 
   return (
-    <div className="absolute top-4 left-4 z-10 bg-background/95 backdrop-blur-sm border rounded-lg p-4 shadow-sm w-56">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+    <div className="absolute top-4 left-4 z-10 bg-card border shadow-sm rounded-lg p-4 w-56">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
         Detected changes
       </p>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         <div className="flex justify-between items-baseline">
-          <span className="text-sm text-muted-foreground">Total flags</span>
-          <span className="text-lg font-semibold tabular-nums">{total}</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wide">Total flags</span>
+          <span className="text-2xl font-semibold tabular-nums">{total}</span>
         </div>
         <div className="flex justify-between items-baseline">
-          <span className="text-sm text-muted-foreground">Critical</span>
-          <span className="text-lg font-semibold tabular-nums text-red-600 dark:text-red-500">
+          <span className="text-xs text-muted-foreground uppercase tracking-wide">Critical</span>
+          <span className="text-2xl font-semibold tabular-nums text-red-600 dark:text-red-400">
             {critical}
           </span>
         </div>
         <div className="flex justify-between items-baseline">
-          <span className="text-sm text-muted-foreground">Awaiting review</span>
-          <span className="text-lg font-semibold tabular-nums">{awaiting}</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wide">Awaiting</span>
+          <span className="text-2xl font-semibold tabular-nums">{awaiting}</span>
         </div>
       </div>
 

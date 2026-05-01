@@ -286,11 +286,22 @@ def _run_pipeline(job: DetectionJob) -> int:
         change_type = ChangeType.NEW_BUILDING
 
         from parcels.models import Parcel
+        from django.contrib.gis.db.models.functions import Area, Intersection
 
-        matched_parcel = (
-            Parcel.objects.filter(boundary__contains=footprint.centroid)
-            .first()
-        )
+        candidates = Parcel.objects.filter(
+            boundary__intersects=footprint
+        ).annotate(
+            overlap_area=Area(Intersection("boundary", footprint))
+        ).order_by("-overlap_area")
+
+        if candidates.count() > 1:
+            logger.debug(
+                "Detection footprint intersects %d parcels — picking largest overlap (%s)",
+                candidates.count(),
+                candidates.first().upi if candidates.exists() else "none",
+            )
+
+        matched_parcel = candidates.first()
 
         detection, created = Detection.objects.get_or_create(
             job=job,

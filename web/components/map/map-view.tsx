@@ -14,8 +14,8 @@ import { StatsOverlay } from "@/components/map/stats-overlay";
 
 const KACYIRU = { longitude: 30.0908, latitude: -1.9418, zoom: 13 };
 
-const LIGHT_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
-const DARK_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+const LIGHT_STYLE = "/api/map-style?theme=light";
+const DARK_STYLE = "/api/map-style?theme=dark";
 
 function flagsToGeoJSON(flags: FlagListItem[]) {
   return {

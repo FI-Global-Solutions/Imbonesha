@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="h-screen flex flex-col">
       <header className="h-14 border-b flex items-center px-6 shrink-0 bg-background z-10">
-        <span className="font-bold text-base tracking-tight">Imbonesha</span>
+        <span className="font-bold text-lg tracking-tight text-foreground">Imbonesha</span>
         <div className="ml-auto flex items-center gap-1">
           <ThemeToggle />
           <UserMenu user={user} />

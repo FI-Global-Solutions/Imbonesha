@@ -42,11 +42,18 @@ from django.core.management.base import BaseCommand, CommandError
 from imagery.models import AOI, ImageScene, ImageSource
 
 # ---------------------------------------------------------------------------
-# Kacyiru anchor — keep in sync with seed.py and seed_sample_scenes.py
+# Kacyiru — NW corner of the seeded parcel grid.
+#
+# Parcel grid extent: lng 30.089000→30.092780, lat -1.944100→-1.939420
+# The LEVIR image NW corner is pinned to the parcel grid's NW corner so that
+# the image starts exactly where the parcels start.  The image (512m × 512m)
+# is wider than the grid (420m × 519m) so some columns overhang on the east
+# side — that's fine, detections there just won't match a parcel.  What we
+# avoid is detections overhanging on the WEST side, which was the original bug.
 # ---------------------------------------------------------------------------
 
-ANCHOR_LAT = -1.9418   # AOI centre lat (slightly N of seed grid)
-ANCHOR_LNG = 30.0908   # AOI centre lng
+GRID_NW_LNG = 30.089000   # parcel grid NW corner — west edge
+GRID_NW_LAT = -1.939420   # parcel grid NW corner — north edge
 
 # LEVIR-CD images are 1024×1024 at 0.5 m/px → 512 m per side.
 LEVIR_IMG_SIZE = 1024
@@ -58,26 +65,23 @@ EXTENT_DEG = LEVIR_EXTENT_M / METRES_PER_DEGREE        # ≈ 0.00461°
 
 
 def _reprojected_transform() -> dict[str, float]:
-    """Affine transform that places the LEVIR image over the Kacyiru AOI.
+    """Affine transform pinning the LEVIR image's NW corner to the parcel grid's NW corner.
 
-    origin_lat/lng = top-left corner of the image (row 0 = north).
-    The image is centred on ANCHOR_LAT/LNG.
+    origin_lat/lng = top-left corner of image (row 0 = north).
     """
-    half = EXTENT_DEG / 2.0
     return {
-        "origin_lat": ANCHOR_LAT + half,
-        "origin_lng": ANCHOR_LNG - half,
+        "origin_lat": GRID_NW_LAT,
+        "origin_lng": GRID_NW_LNG,
         "pixel_size_m": LEVIR_PIXEL_SIZE_M,
         "metres_per_degree": METRES_PER_DEGREE,
     }
 
 
 def _aoi_boundary() -> Polygon:
-    half = EXTENT_DEG / 2.0
-    lng_w = ANCHOR_LNG - half
-    lat_s = ANCHOR_LAT - half
-    lng_e = ANCHOR_LNG + half
-    lat_n = ANCHOR_LAT + half
+    lng_w = GRID_NW_LNG
+    lat_n = GRID_NW_LAT
+    lng_e = GRID_NW_LNG + EXTENT_DEG
+    lat_s = GRID_NW_LAT - EXTENT_DEG
     return Polygon(
         ((lng_w, lat_s), (lng_e, lat_s), (lng_e, lat_n), (lng_w, lat_n), (lng_w, lat_s)),
         srid=4326,

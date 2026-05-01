@@ -23,14 +23,18 @@ export interface FlagFilters {
   status?: string;
   district?: string;
   limit?: number;
+  has_parcel?: boolean;
 }
 
 export function useFlags(filters: FlagFilters = {}) {
+  const params = {
+    has_parcel: true,   // hide unparented flags from dashboard by default
+    ...filters,
+    limit: filters.limit ?? 200,
+  };
   return useQuery<PaginatedResponse<FlagListItem>>({
-    queryKey: ["flags", filters],
-    queryFn: () =>
-      apiClient.get("/flags/", { params: { ...filters, limit: filters.limit ?? 200 } })
-        .then((r) => r.data),
+    queryKey: ["flags", params],
+    queryFn: () => apiClient.get("/flags/", { params }).then((r) => r.data),
     staleTime: 30_000,
   });
 }

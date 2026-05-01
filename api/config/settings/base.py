@@ -42,9 +42,9 @@ INSTALLED_APPS = [
 AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -138,10 +138,14 @@ PERMIT_ADAPTER = env.str("PERMIT_ADAPTER", default="mock")  # "mock" or "kubaka"
 ML_SERVICE_URL = env.str("ML_SERVICE_URL", default="http://ml-service:8002")
 
 # SimpleJWT — use email as the login field (matches AUTH_USER_MODEL)
+from datetime import timedelta
+
 SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
 
 # The default TokenObtainPairView uses USERNAME_FIELD automatically

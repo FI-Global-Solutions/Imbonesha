@@ -14,11 +14,17 @@ import { useFlag, useFlagImagery } from "@/lib/api/hooks";
 import { SEVERITY_BADGE_CLASS, SEVERITY_LABEL, STATUS_BADGE_CLASS } from "@/lib/severity";
 import type { FlagDetail, Severity, FlagStatus } from "@/lib/api/types";
 
-const ADMIN_URL = process.env.NEXT_PUBLIC_API_URL?.replace(":8007", ":8007") ?? "http://localhost:8007";
+const ADMIN_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007";
 
-function proxyUrl(url: string | null | undefined): string | null {
+// Stream URLs come from the API as absolute URLs pointing to /api/v1/flags/{id}/stream/?t=t1|t2
+// Append the JWT so the plain <img> tag can authenticate without an Authorization header.
+function authedImageUrl(url: string | null | undefined): string | null {
   if (!url) return null;
-  return `/api/imagery?url=${encodeURIComponent(url)}`;
+  if (typeof document === "undefined") return url;
+  const token = document.cookie.match(/(?:^|; )access_token=([^;]*)/)?.[1];
+  if (!token) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}token=${encodeURIComponent(decodeURIComponent(token))}`;
 }
 
 function PermitBlock({ flag }: { flag: FlagDetail }) {
@@ -73,8 +79,8 @@ function ImageComparison({ flagId }: { flagId: number }) {
     return <Skeleton className="w-full h-[280px] rounded-md" />;
   }
 
-  const t1 = proxyUrl(data?.t1_url);
-  const t2 = proxyUrl(data?.t2_url);
+  const t1 = authedImageUrl(data?.t1_url);
+  const t2 = authedImageUrl(data?.t2_url);
 
   if (!t1 || !t2) {
     return (

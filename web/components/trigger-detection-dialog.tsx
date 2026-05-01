@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Zap, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -16,22 +17,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useUIStore } from "@/lib/store";
 import { useAois, useCreateDetectionJob } from "@/lib/api/hooks";
 
-interface AoiPair {
-  aoiId: number;
-  aoiName: string;
-  t1SceneId: number;
-  t2SceneId: number;
-  t1Date: string;
-  t2Date: string;
-}
-
-function extractPairs(aoiData: { count: number; results: { type: string; features: { id: number; properties: { name: string; scene_count: number } }[] } } | undefined): AoiPair[] {
-  // The AOI list endpoint returns a paginated GeoFeatureCollection.
-  // scenes are fetched separately — for simplicity we use the scenes
-  // baked into the management command: each LEVIR demo AOI has exactly
-  // t1 = earlier scene, t2 = later scene.
-  // We'll fetch scene data from the aois response properties.
-  return [];
+interface AoiFeature {
+  id: number;
+  properties: {
+    name: string;
+    district: string;
+    scene_count: number;
+    latest_scenes: { id: number; captured_at: string; label: string }[];
+  };
 }
 
 export function TriggerDetectionDialog() {
@@ -40,40 +33,20 @@ export function TriggerDetectionDialog() {
   const createJob = useCreateDetectionJob();
   const [launching, setLaunching] = useState<number | null>(null);
 
-  // Extract AOI features from paginated GeoJSON response
-  const features = aoisData?.results?.features ?? [];
+  const features: AoiFeature[] = aoisData?.results?.features ?? [];
 
-  const handleTrigger = async (aoiId: number, aoiName: string) => {
-    // For each AOI we need the T1/T2 scene IDs.
-    // We fetch scenes via the scenes endpoint filtered by AOI.
-    setLaunching(aoiId);
+  const handleTrigger = async (feature: AoiFeature) => {
+    const scenes = feature.properties.latest_scenes;
+    if (scenes.length < 2) return;
+
+    const t1 = scenes[0];
+    const t2 = scenes[1];
+
+    setLaunching(feature.id);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007"}/api/v1/aois/${aoiId}/`,
-        {
-          headers: {
-            Authorization: `Bearer ${document.cookie.match(/access_token=([^;]+)/)?.[1] ?? ""}`,
-          },
-        }
-      );
-      const aoi = await res.json();
-
-      // Get scenes for this AOI via the scenes sub-resource (not implemented as
-      // a separate endpoint yet — use the detection-jobs endpoint workaround).
-      // For now: hardcode the scene pair by looking up the two most recent scenes.
-      const scenesRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007"}/api/v1/aois/?limit=50`,
-        {
-          headers: {
-            Authorization: `Bearer ${document.cookie.match(/access_token=([^;]+)/)?.[1] ?? ""}`,
-          },
-        }
-      );
-
-      // The API doesn't have a /scenes/ endpoint yet — use the scene IDs
-      // that seed_levir_demo_scenes printed. For now, show a coming-soon toast.
-      toast.info(`Detection job triggered for "${aoiName}"`, {
-        description: "Job queued — results appear on map when complete",
+      await createJob.mutateAsync({ t1_scene_id: t1.id, t2_scene_id: t2.id });
+      toast.success(`Detection job queued for "${feature.properties.name}"`, {
+        description: "New flags will appear on the map when the job completes.",
       });
       setTriggerDialogOpen(false);
     } catch {
@@ -98,46 +71,54 @@ export function TriggerDetectionDialog() {
             <>
               <Skeleton className="h-14 w-full rounded-md" />
               <Skeleton className="h-14 w-full rounded-md" />
-              <Skeleton className="h-14 w-full rounded-md" />
             </>
           ) : features.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               No AOIs found. Seed demo scenes first.
             </p>
           ) : (
-            features.map((f: { id: number; properties: { name: string; district: string; scene_count: number } }) => (
-              <div
-                key={f.id}
-                className="flex items-center justify-between rounded-md border px-4 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{f.properties.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {f.properties.district} · {f.properties.scene_count} scenes
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={launching === f.id || f.properties.scene_count < 2}
-                  onClick={() => handleTrigger(f.id, f.properties.name)}
+            features.map((f) => {
+              const scenes = f.properties.latest_scenes;
+              const canRun = scenes.length >= 2;
+              const t1Label = canRun ? format(new Date(scenes[0].captured_at), "MMM yyyy") : null;
+              const t2Label = canRun ? format(new Date(scenes[1].captured_at), "MMM yyyy") : null;
+
+              return (
+                <div
+                  key={f.id}
+                  className="flex items-center justify-between rounded-md border px-4 py-3"
                 >
-                  {launching === f.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <>
-                      <Zap className="mr-1.5 h-3.5 w-3.5" />
-                      Run
-                    </>
-                  )}
-                </Button>
-              </div>
-            ))
+                  <div>
+                    <p className="text-sm font-medium">{f.properties.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {canRun
+                        ? `${f.properties.district} · ${t1Label} → ${t2Label}`
+                        : "Needs at least two scenes"}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!canRun || launching === f.id}
+                    onClick={() => handleTrigger(f)}
+                  >
+                    {launching === f.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Zap className="mr-1.5 h-3.5 w-3.5" />
+                        Run
+                      </>
+                    )}
+                  </Button>
+                </div>
+              );
+            })
           )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setTriggerDialogOpen(false)}>
+          <Button variant="outline" size="sm" onClick={() => setTriggerDialogOpen(false)}>
             Cancel
           </Button>
         </DialogFooter>
