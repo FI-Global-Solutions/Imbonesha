@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import io
+import logging
+import time
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.http import StreamingHttpResponse
@@ -16,6 +20,187 @@ from rest_framework.viewsets import GenericViewSet
 from .filters import FlagFilter
 from .models import Flag
 from .serializers import FlagDetailSerializer, FlagListSerializer
+
+if TYPE_CHECKING:
+    from PIL import Image as PILImage
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Simple in-process cache for cropped+annotated tiles.
+# Keyed by (flag_id, which).  Values are raw PNG bytes.
+# Safe because crop+overlay is fully deterministic per flag.
+# ---------------------------------------------------------------------------
+_tile_cache: dict[tuple[int, str], bytes] = {}
+
+_PAD = 64          # pixels of padding around the detection footprint
+_MIN_SIZE = 256    # minimum crop dimension (px)
+_MAX_SIZE = 512    # maximum crop dimension (px)
+_IMG_SIZE = 1024   # source image is always 1024×1024
+
+# Polygon overlay colours (R, G, B, A)
+_FILL_COLOUR = (220, 38, 38, 90)    # red-600 @ ~35% alpha
+_STROKE_COLOUR = (220, 38, 38, 255) # solid red-600
+
+
+def _crop_box(
+    footprint,                      # django.contrib.gis.geos.Polygon (WGS84)
+    transform: dict,                # scene metadata geo_transform dict
+) -> tuple[int, int, int, int]:
+    """Return (left, upper, right, lower) pixel crop box for the detection footprint.
+
+    Coordinate-space chain (forward):
+        WGS84 (lng, lat)  →  pixel (col, row)
+        col = (lng - origin_lng) / deg_per_pixel
+        row = (origin_lat - lat) / deg_per_pixel   ← lat decreases as row increases
+
+    Inverse is trivial since the transform is a simple scale+offset.
+
+    The box is padded by _PAD, expanded to _MIN_SIZE, clipped to _MAX_SIZE,
+    and clamped to [0, _IMG_SIZE].  Same box is used for T1 and T2 so the
+    swipe slider aligns perfectly.
+    """
+    origin_lng = transform["origin_lng"]
+    origin_lat = transform["origin_lat"]
+    pixel_size_m = transform["pixel_size_m"]
+    m_per_deg = transform.get("metres_per_degree", 111_000.0)
+    deg_per_pixel = pixel_size_m / m_per_deg
+
+    # Footprint extent: (xmin, ymin, xmax, ymax) = (lng_min, lat_min, lng_max, lat_max)
+    ext = footprint.extent
+    lng_min, lat_min, lng_max, lat_max = ext
+
+    col_min = int((lng_min - origin_lng) / deg_per_pixel)
+    col_max = int((lng_max - origin_lng) / deg_per_pixel)
+    row_min = int((origin_lat - lat_max) / deg_per_pixel)
+    row_max = int((origin_lat - lat_min) / deg_per_pixel)
+
+    # Pad
+    left  = col_min - _PAD
+    right = col_max + _PAD
+    top   = row_min - _PAD
+    bot   = row_max + _PAD
+
+    # Enforce minimum size by expanding around the centroid
+    cx = (left + right) // 2
+    cy = (top + bot) // 2
+    half_w = max((right - left) // 2, _MIN_SIZE // 2)
+    half_h = max((bot - top) // 2, _MIN_SIZE // 2)
+    left, right = cx - half_w, cx + half_w
+    top, bot = cy - half_h, cy + half_h
+
+    # Enforce maximum size
+    if right - left > _MAX_SIZE:
+        cx = (left + right) // 2
+        left, right = cx - _MAX_SIZE // 2, cx + _MAX_SIZE // 2
+    if bot - top > _MAX_SIZE:
+        cy = (top + bot) // 2
+        top, bot = cy - _MAX_SIZE // 2, cy + _MAX_SIZE // 2
+
+    # Clamp to image bounds
+    left  = max(0, left)
+    top   = max(0, top)
+    right = min(_IMG_SIZE, right)
+    bot   = min(_IMG_SIZE, bot)
+
+    return left, top, right, bot
+
+
+def _wgs84_to_crop_pixels(
+    footprint,
+    transform: dict,
+    crop_origin: tuple[int, int],   # (left, top) of the crop box
+) -> list[tuple[int, int]]:
+    """Convert polygon ring coordinates from WGS84 → image pixels → crop-relative pixels."""
+    origin_lng = transform["origin_lng"]
+    origin_lat = transform["origin_lat"]
+    pixel_size_m = transform["pixel_size_m"]
+    m_per_deg = transform.get("metres_per_degree", 111_000.0)
+    deg_per_pixel = pixel_size_m / m_per_deg
+
+    crop_left, crop_top = crop_origin
+    result = []
+    for lng, lat in footprint.coords[0]:  # exterior ring
+        col = int((lng - origin_lng) / deg_per_pixel) - crop_left
+        row = int((origin_lat - lat) / deg_per_pixel) - crop_top
+        result.append((col, row))
+    return result
+
+
+def _fetch_image(client, bucket: str, cog_path: str):
+    """Download a full scene from MinIO and return a PIL Image (RGBA mode)."""
+    from PIL import Image
+
+    resp = client.get_object(bucket, cog_path)
+    data = resp.read()
+    resp.close()
+    img = Image.open(io.BytesIO(data))
+    return img.convert("RGBA")
+
+
+def _build_tile(flag, which: str) -> bytes:
+    """Crop and (for T2) annotate a scene image; return PNG bytes.
+
+    This is the hot path.  It is only called on cache miss and its result is
+    stored in _tile_cache so repeat requests for the same (flag, which) are free.
+    """
+    from PIL import Image, ImageDraw
+    from minio import Minio
+
+    t0 = time.monotonic()
+
+    detection = flag.detection
+    job = detection.job
+    scene = job.t1_scene if which == "t1" else job.t2_scene
+
+    # Geo-transform: prefer scene metadata, fall back to T1 metadata
+    meta = scene.metadata or {}
+    transform = meta.get("geo_transform") or (job.t1_scene.metadata or {}).get("geo_transform")
+    if not transform:
+        raise ValueError(f"No geo_transform in scene #{scene.id} metadata")
+
+    box = _crop_box(detection.footprint, transform)   # (left, top, right, bot)
+    logger.debug("Flag #%d %s: crop_box=%s", flag.id, which, box)
+
+    client = Minio(
+        settings.MINIO_ENDPOINT,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        secure=getattr(settings, "MINIO_SECURE", False),
+    )
+    bucket = getattr(settings, "MINIO_BUCKET", "imbonesha-imagery")
+
+    img = _fetch_image(client, bucket, scene.cog_path)
+    crop = img.crop(box)  # PIL box is (left, upper, right, lower)
+
+    if which == "t2":
+        # Draw detection polygon overlay on T2 only.
+        # crop_origin is the (left, top) of the crop box — used to translate
+        # image-space pixel coords into crop-relative coords.
+        crop_origin = (box[0], box[1])
+        poly_pixels = _wgs84_to_crop_pixels(detection.footprint, transform, crop_origin)
+
+        overlay = Image.new("RGBA", crop.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        draw.polygon(poly_pixels, fill=_FILL_COLOUR)
+        # Draw outline with 2px width by drawing twice offset by 1px
+        draw.polygon(poly_pixels, outline=_STROKE_COLOUR)
+        # PIL's polygon outline is 1px; stroke a slightly expanded ring for 2px effect
+        inflated = [(x + (1 if i % 2 == 0 else 0), y + (1 if i % 2 == 1 else 0))
+                    for i, (x, y) in enumerate(poly_pixels)]
+        draw.polygon(inflated, outline=_STROKE_COLOUR)
+
+        crop = Image.alpha_composite(crop, overlay)
+
+    # Encode to PNG bytes
+    buf = io.BytesIO()
+    crop.save(buf, format="PNG")
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    logger.info("Flag #%d %s: rasterized in %.0f ms", flag.id, which, elapsed_ms)
+    if elapsed_ms > 200:
+        logger.warning("Flag #%d %s: rasterization took %.0f ms — consider a persistent cache", flag.id, which, elapsed_ms)
+
+    return buf.getvalue()
 
 
 class FlagViewSet(
@@ -69,7 +254,12 @@ class FlagViewSet(
     @action(detail=True, methods=["get"], url_path="stream",
             permission_classes=[AllowAny])
     def stream(self, request: Request, pk=None) -> StreamingHttpResponse:
-        """Stream a T1 or T2 image directly from MinIO to the browser.
+        """Stream a cropped, annotated T1 or T2 tile for a flag's detection footprint.
+
+        T1: cropped to the detection bounding box (no overlay).
+        T2: same crop window + red polygon drawn over the detected change.
+
+        Using the same crop window for both ensures the swipe slider aligns.
 
         Accepts JWT via Authorization header OR ?token= query param so that
         plain <img> tags (which can't set headers) can load images.
@@ -92,34 +282,28 @@ class FlagViewSet(
         if not user or not user.is_authenticated:
             return StreamingHttpResponse(status=401)
 
-        # Ensure get_object sees an authenticated user (needed for queryset)
         request._request.user = user
         flag = self.get_object()
-        job = flag.detection.job
         which = request.query_params.get("t", "t1")
-        scene = job.t1_scene if which == "t1" else job.t2_scene
+        scene = flag.detection.job.t1_scene if which == "t1" else flag.detection.job.t2_scene
 
         if not scene or not scene.cog_path:
             return StreamingHttpResponse(status=404)
 
-        try:
-            from minio import Minio
+        cache_key = (flag.id, which)
+        if cache_key not in _tile_cache:
+            try:
+                _tile_cache[cache_key] = _build_tile(flag, which)
+            except Exception:
+                logger.exception("Failed to build tile for flag #%d %s", flag.id, which)
+                return StreamingHttpResponse(status=502)
 
-            client = Minio(
-                settings.MINIO_ENDPOINT,
-                access_key=settings.MINIO_ACCESS_KEY,
-                secret_key=settings.MINIO_SECRET_KEY,
-                secure=getattr(settings, "MINIO_SECURE", False),
-            )
-            bucket = getattr(settings, "MINIO_BUCKET", "imbonesha-imagery")
-            resp = client.get_object(bucket, scene.cog_path)
-            return StreamingHttpResponse(
-                resp.stream(amt=65536),
-                content_type=resp.headers.get("Content-Type", "image/png"),
-                headers={"Cache-Control": "private, max-age=3600"},
-            )
-        except Exception:
-            return StreamingHttpResponse(status=502)
+        png_bytes = _tile_cache[cache_key]
+        return StreamingHttpResponse(
+            iter([png_bytes]),
+            content_type="image/png",
+            headers={"Cache-Control": "private, max-age=3600"},
+        )
 
 
 def _presign(cog_path: str) -> str | None:
