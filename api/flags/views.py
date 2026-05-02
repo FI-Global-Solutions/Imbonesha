@@ -2,24 +2,29 @@
 
 from __future__ import annotations
 
+import csv
 import io
 import logging
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from django.conf import settings
+from django.core.cache import cache
+from django.db.models import Count, Q
 from django.http import StreamingHttpResponse
-from rest_framework import mixins
+from django.utils import timezone
+from rest_framework import mixins, status
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.viewsets import GenericViewSet
+from rest_framework.views import APIView
+from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from .filters import FlagFilter
-from .models import Flag
-from .serializers import FlagDetailSerializer, FlagListSerializer
+from .models import Flag, Report
+from .serializers import FlagDetailSerializer, FlagListSerializer, ReportSerializer
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
@@ -211,7 +216,7 @@ class FlagViewSet(
     permission_classes = [IsAuthenticated]
     filterset_class = FlagFilter
     search_fields = ["detection__parcel__upi", "detection__parcel__owner_name", "district"]
-    ordering_fields = ["created_at", "severity", "status"]
+    ordering_fields = ["created_at", "severity", "status", "district", "detection__parcel__upi"]
     ordering = ["-created_at"]
 
     def get_queryset(self):
@@ -230,6 +235,71 @@ class FlagViewSet(
         if self.action == "retrieve" or self.action == "imagery":
             return FlagDetailSerializer
         return FlagListSerializer
+
+    @action(detail=False, methods=["get"], url_path="export.csv", url_name="export_csv")
+    def export_csv(self, request: Request) -> StreamingHttpResponse:
+        """Stream all filtered flags as a CSV download."""
+        qs = self.filter_queryset(self.get_queryset())
+
+        today = date.today().isoformat()
+
+        def _rows():
+            yield [
+                "flag_id", "flagged_at", "severity", "status",
+                "parcel_upi", "owner_name", "district", "sector", "cell",
+                "zone_type", "permit_status", "permit_no",
+                "change_type", "confidence", "area_sqm",
+                "latitude", "longitude",
+            ]
+            for flag in qs.iterator(chunk_size=200):
+                det = flag.detection
+                parcel = det.parcel
+                centroid = det.footprint.centroid if det.footprint else None
+                active_permit = parcel.permits.filter(status="active").first() if parcel else None
+                has_active = active_permit is not None
+                if has_active:
+                    pstatus = "active"
+                elif parcel and parcel.permits.filter(status="expired").exists():
+                    pstatus = "expired"
+                elif parcel and parcel.permits.exists():
+                    pstatus = "other"
+                else:
+                    pstatus = "no_permit"
+                yield [
+                    flag.id,
+                    flag.created_at.isoformat(),
+                    flag.severity,
+                    flag.status,
+                    parcel.upi if parcel else "",
+                    parcel.owner_name if parcel else "",
+                    parcel.district if parcel else flag.district,
+                    parcel.sector if parcel else "",
+                    parcel.cell if parcel else "",
+                    parcel.zone_type if parcel else "",
+                    pstatus,
+                    active_permit.permit_no if active_permit else "",
+                    det.change_type or "",
+                    round(det.confidence or 0, 4),
+                    round(det.area_sqm or 0, 1),
+                    round(centroid.y, 6) if centroid else "",
+                    round(centroid.x, 6) if centroid else "",
+                ]
+
+        def _stream():
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            for row in _rows():
+                writer.writerow(row)
+                yield buf.getvalue()
+                buf.seek(0)
+                buf.truncate()
+
+        resp = StreamingHttpResponse(
+            _stream(),
+            content_type="text/csv",
+        )
+        resp["Content-Disposition"] = f'attachment; filename="imbonesha-flags-{today}.csv"'
+        return resp
 
     @action(detail=True, methods=["get"], url_path="imagery")
     def imagery(self, request: Request, pk=None) -> Response:
@@ -329,3 +399,226 @@ def _presign(cog_path: str) -> str | None:
         return client.presigned_get_object(bucket, cog_path, expires=timedelta(minutes=15))
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Analytics
+# ---------------------------------------------------------------------------
+
+class AnalyticsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        CACHE_KEY = "analytics_summary"
+        cached = cache.get(CACHE_KEY)
+        if cached:
+            return Response(cached)
+
+        now = timezone.now()
+        thirty_days_ago = now - timedelta(days=30)
+
+        total = Flag.objects.count()
+        awaiting = Flag.objects.filter(status__in=["pending", "assigned", "in_review"]).count()
+        confirmed_30d = Flag.objects.filter(
+            status="confirmed", updated_at__gte=thirty_days_ago
+        ).count()
+
+        # Flags over time — last 90 days, grouped by day + severity
+        ninety_days_ago = now - timedelta(days=90)
+        from django.db.models.functions import TruncDate
+        daily_qs = (
+            Flag.objects
+            .filter(created_at__gte=ninety_days_ago)
+            .annotate(day=TruncDate("created_at"))
+            .values("day", "severity")
+            .annotate(count=Count("id"))
+            .order_by("day")
+        )
+        # Pivot into {date: {severity: count}}
+        day_map: dict[str, dict] = {}
+        for row in daily_qs:
+            d = row["day"].isoformat()
+            day_map.setdefault(d, {"date": d, "low": 0, "medium": 0, "high": 0, "critical": 0})
+            day_map[d][row["severity"]] = row["count"]
+        flags_over_time = sorted(day_map.values(), key=lambda x: x["date"])
+
+        # Flags by district
+        district_qs = (
+            Flag.objects
+            .values("district")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+        flags_by_district = [
+            {"district": r["district"] or "Unknown", "count": r["count"]}
+            for r in district_qs
+        ]
+
+        # Permit status breakdown from FlagListSerializer logic
+        from .serializers import FlagListSerializer as _S
+        permit_counts = {"active": 0, "expired": 0, "no_permit": 0, "other": 0}
+        for flag in Flag.objects.select_related("detection__parcel").prefetch_related("detection__parcel__permits"):
+            parcel = flag.detection.parcel if flag.detection else None
+            if parcel is None:
+                permit_counts["no_permit"] += 1
+            elif parcel.permits.filter(status="active").exists():
+                permit_counts["active"] += 1
+            elif parcel.permits.filter(status="expired").exists():
+                permit_counts["expired"] += 1
+            elif parcel.permits.exists():
+                permit_counts["other"] += 1
+            else:
+                permit_counts["no_permit"] += 1
+
+        # Detection throughput — by week
+        from django.db.models.functions import TruncWeek
+        from detections.models import DetectionJob
+        weekly_qs = (
+            DetectionJob.objects
+            .annotate(week=TruncWeek("created_at"))
+            .values("week")
+            .annotate(jobs=Count("id", distinct=True))
+            .order_by("week")
+        )
+        # Detections per week
+        from detections.models import Detection
+        det_weekly = (
+            Detection.objects
+            .annotate(week=TruncWeek("created_at"))
+            .values("week")
+            .annotate(detections=Count("id"))
+            .order_by("week")
+        )
+        det_map = {r["week"]: r["detections"] for r in det_weekly}
+        throughput = [
+            {
+                "week": r["week"].strftime("%Y-W%V"),
+                "jobs": r["jobs"],
+                "detections": det_map.get(r["week"], 0),
+            }
+            for r in weekly_qs
+            if r["week"]
+        ]
+
+        payload = {
+            "kpis": {
+                "total_flags": total,
+                "awaiting_review": awaiting,
+                "confirmed_unauthorized_30d": confirmed_30d,
+                "avg_time_to_inspection_hours": None,
+            },
+            "flags_over_time": flags_over_time,
+            "flags_by_district": flags_by_district,
+            "permit_status_breakdown": permit_counts,
+            "detection_throughput": throughput,
+        }
+        cache.set(CACHE_KEY, payload, 60)
+        return Response(payload)
+
+
+# ---------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------
+
+class ReportViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    GenericViewSet,
+):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ReportSerializer
+
+    def get_queryset(self):
+        return Report.objects.select_related("generated_by").order_by("-generated_at")
+
+    def create(self, request: Request, *args, **kwargs) -> Response:
+        flag_ids = request.data.get("flag_ids", [])
+        title = request.data.get("title", f"Report — {date.today().isoformat()}")
+
+        if not flag_ids:
+            return Response({"detail": "flag_ids is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        flags = list(Flag.objects.filter(id__in=flag_ids).select_related(
+            "detection__parcel",
+            "detection__job__t1_scene",
+            "detection__job__t2_scene",
+        ).prefetch_related("detection__parcel__permits"))
+
+        if not flags:
+            return Response({"detail": "No matching flags found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        import uuid as _uuid
+        report_id = _uuid.uuid4()
+
+        from .services.reports import generate_flag_report
+        pdf_bytes = generate_flag_report([f.id for f in flags], request.user)
+
+        # Store in MinIO
+        file_path = ""
+        try:
+            from minio import Minio
+            client = Minio(
+                settings.MINIO_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                secure=getattr(settings, "MINIO_SECURE", False),
+            )
+            bucket = getattr(settings, "MINIO_BUCKET", "imbonesha-imagery")
+            object_name = f"reports/{report_id}.pdf"
+            client.put_object(
+                bucket, object_name,
+                io.BytesIO(pdf_bytes), len(pdf_bytes),
+                content_type="application/pdf",
+            )
+            file_path = object_name
+        except Exception:
+            logger.exception("Failed to store report PDF in MinIO")
+
+        report = Report.objects.create(
+            id=report_id,
+            title=title,
+            generated_by=request.user,
+            flag_ids=[f.id for f in flags],
+            flag_count=len(flags),
+            file_path=file_path,
+            file_size=len(pdf_bytes),
+        )
+
+        return Response(ReportSerializer(report).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request: Request, pk=None) -> StreamingHttpResponse:
+        report = self.get_object()
+        if not report.file_path:
+            # Re-generate on the fly
+            flags = list(Flag.objects.filter(id__in=report.flag_ids))
+            from .services.reports import generate_flag_report
+            pdf_bytes = generate_flag_report([f.id for f in flags], request.user)
+        else:
+            try:
+                from minio import Minio
+                client = Minio(
+                    settings.MINIO_ENDPOINT,
+                    access_key=settings.MINIO_ACCESS_KEY,
+                    secret_key=settings.MINIO_SECRET_KEY,
+                    secure=getattr(settings, "MINIO_SECURE", False),
+                )
+                bucket = getattr(settings, "MINIO_BUCKET", "imbonesha-imagery")
+                resp = client.get_object(bucket, report.file_path)
+                pdf_bytes = resp.read()
+                resp.close()
+            except Exception:
+                logger.exception("Failed to fetch report from MinIO, regenerating")
+                flags = list(Flag.objects.filter(id__in=report.flag_ids))
+                from .services.reports import generate_flag_report
+                pdf_bytes = generate_flag_report([f.id for f in flags], request.user)
+
+        filename = f"imbonesha-report-{report.id}.pdf"
+        response = StreamingHttpResponse(
+            iter([pdf_bytes]),
+            content_type="application/pdf",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response

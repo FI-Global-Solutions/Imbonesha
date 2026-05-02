@@ -4,9 +4,9 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMe } from "@/lib/api/hooks";
 import { getCookie } from "@/lib/api/client";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { UserMenu } from "@/components/user-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Sidebar } from "@/components/sidebar";
+import { FlagDetailSheet } from "@/components/flag-detail-sheet";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -21,14 +21,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (isLoading || !user) {
     return (
-      <div className="h-screen flex flex-col">
-        <header className="h-14 border-b flex items-center px-6 gap-4">
-          <Skeleton className="h-5 w-28" />
-          <div className="ml-auto flex gap-2">
-            <Skeleton className="h-8 w-8 rounded-full" />
-            <Skeleton className="h-8 w-8 rounded-full" />
+      <div className="h-screen flex">
+        <div className="w-[220px] border-r border-border bg-background shrink-0 flex flex-col">
+          <div className="h-14 border-b border-border/60 flex items-center px-4 gap-2.5">
+            <Skeleton className="h-5 w-5 rounded" />
+            <Skeleton className="h-4 w-28" />
           </div>
-        </header>
+          <div className="p-2 space-y-1">
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full rounded-md" />
+            ))}
+          </div>
+        </div>
         <div className="flex-1 bg-muted/20" />
       </div>
     );
@@ -37,17 +41,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (isError) return null;
 
   return (
-    <div className="h-screen flex flex-col">
-      <header className="h-14 border-b flex items-center px-6 shrink-0 bg-background z-10">
-        <span className="font-bold text-lg tracking-tight text-foreground">Imbonesha</span>
-        <div className="ml-auto flex items-center gap-1">
-          <ThemeToggle />
-          <UserMenu user={user} />
-        </div>
-      </header>
-      <main className="flex-1 relative overflow-hidden">
+    <div className="h-screen flex overflow-hidden">
+      <Sidebar />
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {children}
       </main>
+      <FlagDetailSheet />
     </div>
   );
 }

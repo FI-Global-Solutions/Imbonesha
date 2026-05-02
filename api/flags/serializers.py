@@ -11,7 +11,7 @@ from detections.models import Detection
 from imagery.models import ImageScene
 from parcels.models import Parcel, Permit
 
-from .models import Flag
+from .models import Flag, Report
 
 
 class _PermitSerializer(serializers.ModelSerializer):
@@ -145,3 +145,21 @@ class FlagDetailSerializer(FlagListSerializer):
 
     def get_detection(self, obj: Flag) -> dict:
         return _DetectionSerializer(obj.detection).data
+
+
+class ReportSerializer(serializers.ModelSerializer):
+    generated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Report
+        fields = (
+            "id", "title", "generated_by", "generated_by_name",
+            "generated_at", "flag_ids", "flag_count",
+            "file_size",
+        )
+        read_only_fields = ("id", "generated_at", "flag_count", "file_size", "generated_by")
+
+    def get_generated_by_name(self, obj: Report) -> str | None:
+        if obj.generated_by:
+            return obj.generated_by.get_full_name() or obj.generated_by.email
+        return None

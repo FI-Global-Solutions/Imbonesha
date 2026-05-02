@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "./client";
 import type {
   User, FlagListItem, FlagDetail, FlagImagery,
-  PaginatedResponse, DetectionJob,
+  PaginatedResponse, DetectionJob, Report, AnalyticsSummary,
 } from "./types";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -76,6 +76,47 @@ export function useCreateDetectionJob() {
       apiClient.post("/detection-jobs/", payload).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["flags"] });
+    },
+  });
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+
+export function useAnalytics() {
+  return useQuery<AnalyticsSummary>({
+    queryKey: ["analytics"],
+    queryFn: () => apiClient.get("/analytics/summary/").then((r) => r.data),
+    staleTime: 60_000,
+  });
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────────
+
+export function useReports() {
+  return useQuery<PaginatedResponse<Report>>({
+    queryKey: ["reports"],
+    queryFn: () => apiClient.get("/reports/").then((r) => r.data),
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateReport() {
+  const qc = useQueryClient();
+  return useMutation<Report, Error, { flag_ids: number[]; title: string }>({
+    mutationFn: (payload) =>
+      apiClient.post("/reports/", payload).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reports"] });
+    },
+  });
+}
+
+export function useDeleteReport() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => apiClient.delete(`/reports/${id}/`).then(() => {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reports"] });
     },
   });
 }

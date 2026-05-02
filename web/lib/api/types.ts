@@ -114,3 +114,37 @@ export interface DetectionJob {
   model_version: string;
   created_at: string;
 }
+
+export interface Report {
+  id: string;
+  title: string;
+  generated_by: number | null;
+  generated_by_name: string | null;
+  generated_at: string;
+  flag_ids: number[];
+  flag_count: number;
+  file_size: number;
+}
+
+export interface AnalyticsKPIs {
+  total_flags: number;
+  awaiting_review: number;
+  confirmed_unauthorized_30d: number;
+  avg_time_to_inspection_hours: number | null;
+}
+
+export interface FlagsOverTimeRow {
+  date: string;
+  low: number;
+  medium: number;
+  high: number;
+  critical: number;
+}
+
+export interface AnalyticsSummary {
+  kpis: AnalyticsKPIs;
+  flags_over_time: FlagsOverTimeRow[];
+  flags_by_district: { district: string; count: number }[];
+  permit_status_breakdown: { active: number; expired: number; no_permit: number; other: number };
+  detection_throughput: { week: string; jobs: number; detections: number }[];
+}

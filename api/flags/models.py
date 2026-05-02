@@ -175,6 +175,34 @@ class AuditLog(models.Model):
 # a circular import.
 # ---------------------------------------------------------------------------
 
+class Report(models.Model):
+    """A generated PDF enforcement report covering one or more flags."""
+
+    import uuid as _uuid
+
+    id = models.UUIDField(primary_key=True, default=_uuid.uuid4, editable=False)
+    title = models.CharField(max_length=255)
+    generated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reports",
+    )
+    generated_at = models.DateTimeField(auto_now_add=True)
+    flag_ids = models.JSONField(default=list)
+    flag_count = models.IntegerField(default=0)
+    file_path = models.CharField(max_length=512, blank=True, default="")
+    file_size = models.BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "flags_report"
+        ordering = ["-generated_at"]
+
+    def __str__(self) -> str:
+        return f"Report '{self.title}' ({self.flag_count} flags)"
+
+
 def compute_severity(
     *,
     has_active_permit: bool,
