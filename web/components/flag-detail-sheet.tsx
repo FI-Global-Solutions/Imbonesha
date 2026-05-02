@@ -237,6 +237,7 @@ export function FlagDetailSheet() {
     <Sheet open={drawerOpen} onOpenChange={(open: boolean) => !open && closeDrawer()}>
       <SheetContent
         side="right"
+        showCloseButton={false}
         className="w-full sm:w-[480px] sm:max-w-[480px] p-0 flex flex-col"
       >
         <SheetHeader className="px-6 py-4 border-b shrink-0 flex-row items-center justify-between space-y-0">
@@ -246,7 +247,7 @@ export function FlagDetailSheet() {
           </Button>
         </SheetHeader>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="px-6 py-6">
             {isLoading ? (
               <div className="space-y-4">
