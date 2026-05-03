@@ -44,8 +44,10 @@ _MAX_SIZE = 512    # maximum crop dimension (px)
 _IMG_SIZE = 1024   # source image is always 1024×1024
 
 # Polygon overlay colours (R, G, B, A)
-_FILL_COLOUR = (220, 38, 38, 90)    # red-600 @ ~35% alpha
-_STROKE_COLOUR = (220, 38, 38, 255) # solid red-600
+_FILL_COLOUR = (220, 38, 38, 90)       # red-600 @ ~35% alpha  — primary detection
+_STROKE_COLOUR = (220, 38, 38, 255)    # solid red-600         — primary detection
+_CTX_FILL_COLOUR = (251, 146, 60, 40)  # orange-400 @ ~15% alpha — neighbouring detections
+_CTX_STROKE_COLOUR = (251, 146, 60, 180) # orange-400 @ ~70%  — neighbouring detections
 
 
 def _crop_box(
@@ -191,21 +193,56 @@ def _build_tile(flag, which: str) -> bytes:
     crop = img.crop(box)  # PIL box is (left, upper, right, lower)
 
     if which == "t2":
-        # Draw detection polygon overlay on T2 only.
-        # crop_origin is the (left, top) of the crop box — used to translate
-        # image-space pixel coords into crop-relative coords.
+        # Draw all detections from the same job that fall within the crop window,
+        # so inspectors can see the full scene context — not just the one polygon.
+        # Neighbouring detections are drawn in dim orange first; the primary
+        # detection is drawn last in solid red so it is always clearly on top.
         crop_origin = (box[0], box[1])
-        poly_pixels = _wgs84_to_crop_pixels(detection.footprint, transform, crop_origin)
+        crop_left, crop_top, crop_right, crop_bot = box
+        crop_w = crop_right - crop_left
+        crop_h = crop_bot - crop_top
+
+        # Collect all sibling detections whose footprint overlaps the crop window.
+        from django.contrib.gis.geos import Polygon as GEOSPolygon
+        deg_per_px = transform["pixel_size_m"] / transform.get("metres_per_degree", 111_000.0)
+        origin_lng = transform["origin_lng"]
+        origin_lat = transform["origin_lat"]
+        crop_lng_min = origin_lng + crop_left * deg_per_px
+        crop_lat_max = origin_lat - crop_top * deg_per_px
+        crop_lng_max = origin_lng + crop_right * deg_per_px
+        crop_lat_min = origin_lat - crop_bot * deg_per_px
+        crop_bbox = GEOSPolygon.from_bbox((crop_lng_min, crop_lat_min, crop_lng_max, crop_lat_max))
+
+        from .models import Flag as FlagModel
+        siblings = (
+            FlagModel.objects
+            .filter(detection__job=job)
+            .exclude(detection=detection)
+            .filter(detection__footprint__intersects=crop_bbox)
+            .select_related("detection")
+        )
 
         overlay = Image.new("RGBA", crop.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
-        draw.polygon(poly_pixels, fill=_FILL_COLOUR)
-        # Draw outline with 2px width by drawing twice offset by 1px
-        draw.polygon(poly_pixels, outline=_STROKE_COLOUR)
-        # PIL's polygon outline is 1px; stroke a slightly expanded ring for 2px effect
-        inflated = [(x + (1 if i % 2 == 0 else 0), y + (1 if i % 2 == 1 else 0))
-                    for i, (x, y) in enumerate(poly_pixels)]
-        draw.polygon(inflated, outline=_STROKE_COLOUR)
+
+        def _draw_poly(pts, fill, stroke):
+            draw.polygon(pts, fill=fill)
+            draw.polygon(pts, outline=stroke)
+            inflated = [(x + (1 if i % 2 == 0 else 0), y + (1 if i % 2 == 1 else 0))
+                        for i, (x, y) in enumerate(pts)]
+            draw.polygon(inflated, outline=stroke)
+
+        # Draw neighbouring detections in dim orange (context layer).
+        for sibling in siblings:
+            pts = _wgs84_to_crop_pixels(sibling.detection.footprint, transform, crop_origin)
+            # Skip polygons that land entirely outside the crop (clamp rounding edge cases).
+            if all(x < 0 or x > crop_w or y < 0 or y > crop_h for x, y in pts):
+                continue
+            _draw_poly(pts, _CTX_FILL_COLOUR, _CTX_STROKE_COLOUR)
+
+        # Draw the primary detection in solid red on top.
+        primary_pts = _wgs84_to_crop_pixels(detection.footprint, transform, crop_origin)
+        _draw_poly(primary_pts, _FILL_COLOUR, _STROKE_COLOUR)
 
         crop = Image.alpha_composite(crop, overlay)
 
