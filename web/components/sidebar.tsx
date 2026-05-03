@@ -18,25 +18,28 @@ const NAV = [
 function LogoMark({ collapsed }: { collapsed: boolean }) {
   return (
     <div className={cn(
-      "flex items-center gap-3 h-14 border-b border-border/60 shrink-0 px-4",
-      collapsed && "justify-center px-0"
+      "flex flex-col items-center justify-center gap-1.5 border-b border-border/60 shrink-0 py-4",
+      collapsed ? "h-14" : "h-24"
     )}>
-      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden">
+      <div className={cn(
+        "rounded-xl bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden transition-all duration-200",
+        collapsed ? "h-8 w-8" : "h-12 w-12"
+      )}>
         <Image
           src="/logo.png"
           alt="Imbonesha"
-          width={28}
-          height={28}
+          width={collapsed ? 26 : 40}
+          height={collapsed ? 26 : 40}
           className="object-contain"
           priority
         />
       </div>
       {!collapsed && (
-        <div className="flex flex-col min-w-0">
-          <span className="font-bold text-[14px] tracking-tight text-foreground leading-none">
+        <div className="flex flex-col items-center min-w-0">
+          <span className="font-bold text-[13px] tracking-tight text-foreground leading-none">
             Imbonesha
           </span>
-          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50 leading-none mt-0.75">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50 leading-none mt-1">
             RHA · Change Detection
           </span>
         </div>
