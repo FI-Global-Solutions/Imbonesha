@@ -8,30 +8,35 @@ import { cn } from "@/lib/utils";
 import { useFlags } from "@/lib/api/hooks";
 
 const NAV = [
-  { href: "/", label: "Map", icon: Map },
-  { href: "/flags", label: "Flags", icon: TableProperties, showBadge: true },
+  { href: "/",          label: "Map",       icon: Map },
+  { href: "/flags",     label: "Flags",     icon: TableProperties, showBadge: true },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/reports", label: "Reports", icon: FileText },
+  { href: "/reports",   label: "Reports",   icon: FileText },
 ];
 
 function LogoMark({ collapsed }: { collapsed: boolean }) {
   return (
-    <div className={cn("flex items-center gap-2.5 px-4 h-14 border-b border-border/60 shrink-0", collapsed && "justify-center px-0")}>
-      <svg width="22" height="22" viewBox="0 0 28 28" fill="none" aria-hidden className="shrink-0">
-        <polygon points="14,2 25,8 25,20 14,26 3,20 3,8" fill="currentColor" className="text-primary" opacity="0.15" />
-        <polygon points="14,2 25,8 25,20 14,26 3,20 3,8" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-primary" />
-        <line x1="14" y1="9" x2="14" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-primary" />
-        <line x1="14" y1="15" x2="14" y2="19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-primary" />
-        <line x1="9" y1="14" x2="13" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-primary" />
-        <line x1="15" y1="14" x2="19" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-primary" />
-        <circle cx="14" cy="14" r="1.5" fill="currentColor" className="text-primary" />
-      </svg>
+    <div className={cn(
+      "flex items-center gap-3 h-14 border-b border-border/60 shrink-0 px-4",
+      collapsed && "justify-center px-0"
+    )}>
+      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+        <svg width="18" height="18" viewBox="0 0 28 28" fill="none" aria-hidden>
+          <polygon points="14,2 25,8 25,20 14,26 3,20 3,8" fill="currentColor" className="text-primary" opacity="0.2" />
+          <polygon points="14,2 25,8 25,20 14,26 3,20 3,8" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
+          <line x1="14" y1="9"  x2="14" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-primary" />
+          <line x1="14" y1="15" x2="14" y2="19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-primary" />
+          <line x1="9"  y1="14" x2="13" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-primary" />
+          <line x1="15" y1="14" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-primary" />
+          <circle cx="14" cy="14" r="2" fill="currentColor" className="text-primary" />
+        </svg>
+      </div>
       {!collapsed && (
         <div className="flex flex-col min-w-0">
-          <span className="font-semibold text-[14px] tracking-tight text-foreground leading-none truncate">
+          <span className="font-bold text-[14px] tracking-tight text-foreground leading-none">
             Imbonesha
           </span>
-          <span className="text-[9px] font-medium uppercase tracking-widest text-muted-foreground/60 leading-none mt-0.5">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50 leading-none mt-[3px]">
             RHA · Change Detection
           </span>
         </div>
@@ -58,12 +63,10 @@ export function Sidebar() {
   }
 
   return (
-    <aside
-      className={cn(
-        "h-full flex flex-col border-r border-border bg-background transition-[width] duration-200 shrink-0",
-        collapsed ? "w-[60px]" : "w-[220px]"
-      )}
-    >
+    <aside className={cn(
+      "h-full flex flex-col border-r border-border bg-background/95 transition-[width] duration-200 shrink-0",
+      collapsed ? "w-[60px]" : "w-[224px]"
+    )}>
       <LogoMark collapsed={collapsed} />
 
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
@@ -75,18 +78,26 @@ export function Sidebar() {
               href={href}
               title={collapsed ? label : undefined}
               className={cn(
-                "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors",
+                "group flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-sm font-medium transition-all duration-150",
                 active
-                  ? "bg-accent text-accent-foreground font-medium"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
               )}
             >
-              <Icon className="h-4 w-4 shrink-0" />
+              <Icon className={cn(
+                "h-4 w-4 shrink-0 transition-colors",
+                active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+              )} />
               {!collapsed && (
                 <span className="flex-1 truncate">{label}</span>
               )}
               {!collapsed && showBadge && pendingCount > 0 && (
-                <span className="ml-auto text-[11px] font-medium tabular-nums bg-muted text-muted-foreground rounded px-1.5 py-0.5 leading-none">
+                <span className={cn(
+                  "ml-auto text-[10px] font-bold tabular-nums rounded-full px-1.5 py-0.5 leading-none min-w-[18px] text-center",
+                  active
+                    ? "bg-primary/20 text-primary"
+                    : "bg-muted text-muted-foreground"
+                )}>
                   {pendingCount > 999 ? "999+" : pendingCount}
                 </span>
               )}
@@ -97,12 +108,13 @@ export function Sidebar() {
 
       <div className="px-2 py-3 border-t border-border/60">
         <button
+          type="button"
           onClick={toggle}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className={cn(
-            "flex items-center gap-3 w-full rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors",
+            "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors",
             collapsed && "justify-center"
           )}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed
             ? <PanelLeftOpen className="h-4 w-4 shrink-0" />
