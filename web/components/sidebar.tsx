@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Map, TableProperties, BarChart3, FileText, PanelLeftClose, PanelLeftOpen } from "lucide-react";
@@ -20,23 +21,22 @@ function LogoMark({ collapsed }: { collapsed: boolean }) {
       "flex items-center gap-3 h-14 border-b border-border/60 shrink-0 px-4",
       collapsed && "justify-center px-0"
     )}>
-      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-        <svg width="18" height="18" viewBox="0 0 28 28" fill="none" aria-hidden>
-          <polygon points="14,2 25,8 25,20 14,26 3,20 3,8" fill="currentColor" className="text-primary" opacity="0.2" />
-          <polygon points="14,2 25,8 25,20 14,26 3,20 3,8" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" />
-          <line x1="14" y1="9"  x2="14" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-primary" />
-          <line x1="14" y1="15" x2="14" y2="19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-primary" />
-          <line x1="9"  y1="14" x2="13" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-primary" />
-          <line x1="15" y1="14" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-primary" />
-          <circle cx="14" cy="14" r="2" fill="currentColor" className="text-primary" />
-        </svg>
+      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden">
+        <Image
+          src="/logo.png"
+          alt="Imbonesha"
+          width={28}
+          height={28}
+          className="object-contain"
+          priority
+        />
       </div>
       {!collapsed && (
         <div className="flex flex-col min-w-0">
           <span className="font-bold text-[14px] tracking-tight text-foreground leading-none">
             Imbonesha
           </span>
-          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50 leading-none mt-[3px]">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50 leading-none mt-0.75">
             RHA · Change Detection
           </span>
         </div>

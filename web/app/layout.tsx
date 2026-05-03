@@ -13,6 +13,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Imbonesha",
   description: "Rwanda Housing Authority — Unauthorised Construction Detection",
+  icons: {
+    icon: "/favicon-32.png",
+    apple: "/icon-192.png",
+  },
 };
 
 export default function RootLayout({

@@ -8,6 +8,7 @@ import { z } from "zod";
 import axios from "axios";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,11 +51,25 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-8">
-        <div className="text-center space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight">Imbonesha</h1>
-          <p className="text-sm text-muted-foreground">
-            Rwanda Housing Authority — Construction Monitoring
-          </p>
+        <div className="text-center space-y-3">
+          <div className="flex justify-center">
+            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center overflow-hidden">
+              <Image
+                src="/logo.png"
+                alt="Imbonesha"
+                width={52}
+                height={52}
+                className="object-contain"
+                priority
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight">Imbonesha</h1>
+            <p className="text-sm text-muted-foreground">
+              Rwanda Housing Authority — Construction Monitoring
+            </p>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
