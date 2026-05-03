@@ -110,8 +110,13 @@ export interface DetectionJob {
   id: number;
   t1_scene_id: number;
   t2_scene_id: number;
+  aoi_name: string;
   status: "queued" | "running" | "completed" | "failed";
   model_version: string;
+  detection_count: number;
+  started_at: string | null;
+  ran_at: string | null;
+  error_message: string;
   created_at: string;
 }
 

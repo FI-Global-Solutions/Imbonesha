@@ -69,6 +69,28 @@ export function useAois() {
 
 // ── Detection jobs ────────────────────────────────────────────────────────────
 
+export function useDetectionJobs() {
+  return useQuery<DetectionJob[]>({
+    queryKey: ["detection-jobs"],
+    queryFn: () => apiClient.get("/detection-jobs/").then((r) => r.data.results ?? r.data),
+    staleTime: 10_000,
+    refetchInterval: 8_000,
+  });
+}
+
+export function useDetectionJob(id: number | null) {
+  return useQuery<DetectionJob>({
+    queryKey: ["detection-job", id],
+    queryFn: () => apiClient.get(`/detection-jobs/${id}/`).then((r) => r.data),
+    enabled: id !== null,
+    // Poll every 3 s while job is active, stop once terminal.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "queued" || status === "running" ? 3_000 : false;
+    },
+  });
+}
+
 export function useCreateDetectionJob() {
   const qc = useQueryClient();
   return useMutation<DetectionJob, Error, { t1_scene_id: number; t2_scene_id: number }>({
@@ -76,6 +98,7 @@ export function useCreateDetectionJob() {
       apiClient.post("/detection-jobs/", payload).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["flags"] });
+      qc.invalidateQueries({ queryKey: ["detection-jobs"] });
     },
   });
 }
