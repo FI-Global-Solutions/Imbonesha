@@ -12,6 +12,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { setCookie } from "@/lib/api/client";
 
 const schema = z.object({
@@ -130,7 +131,10 @@ export default function LoginPage() {
       </div>
 
       {/* ── Right panel — form ──────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative">
+        <div className="absolute top-4 right-4">
+          <ThemeToggle />
+        </div>
 
         {/* Mobile logo (hidden on desktop) */}
         <div className="lg:hidden flex flex-col items-center gap-3 mb-10">
