@@ -75,5 +75,9 @@ docker-compose.override.yml
 # OS
 Thumbs.db
 ehthumbs.db
+
+# Screenshots
+screenshoots/
+screenshots/
 ml/data/
 ml/checkpoints/*.pth
