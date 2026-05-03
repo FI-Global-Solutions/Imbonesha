@@ -152,6 +152,9 @@ def _extract_geotransform(local_path: Path) -> dict[str, float] | None:
 
     Returns a dict compatible with _pixel_polygon_to_wgs84, or None if the
     file is not a GeoTIFF or rasterio is not available.
+
+    The dict includes width_px / height_px so callers can compute the
+    inference-to-original scale factor without opening the file again.
     """
     if local_path.suffix.lower() not in (".tif", ".tiff", ".cog"):
         return None
@@ -172,6 +175,8 @@ def _extract_geotransform(local_path: Path) -> dict[str, float] | None:
                 "origin_lat": origin_lat,
                 "pixel_size_m": pixel_size_m,
                 "metres_per_degree": 111_000.0,
+                "width_px": float(src.width),
+                "height_px": float(src.height),
             }
     except Exception as exc:
         logger.warning("Could not read geo-transform from %s: %s", local_path, exc)
@@ -252,21 +257,33 @@ def _run_pipeline(job: DetectionJob) -> int:
     job_dir = _shared_imagery_dir() / str(job.pk)
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load geo-transform: prefer scene metadata (fast path), else read GeoTIFF header.
-    meta1 = job.t1_scene.metadata or {}
-    transform = meta1.get("geo_transform")
-
     t1_local = _download_scene(job.t1_scene.cog_path, job_dir)
     t2_local = _download_scene(job.t2_scene.cog_path, job_dir)
 
+    # Load (or extract and cache) geo-transform for T1 and T2 independently.
+    # Storing them separately handles the case where T1/T2 come from different
+    # tiles with different origins — the overlay in views.py uses each scene's
+    # own transform when rendering.
+    meta1 = job.t1_scene.metadata or {}
+    transform = meta1.get("geo_transform")
     if transform is None:
         transform = _extract_geotransform(t1_local)
         if transform is not None:
             job.t1_scene.metadata = {**meta1, "geo_transform": transform}
             job.t1_scene.save(update_fields=["metadata"])
-            logger.info("Cached geo-transform from GeoTIFF into ImageScene.metadata")
+            logger.info("Cached T1 geo-transform from GeoTIFF into ImageScene.metadata")
+
+    meta2 = job.t2_scene.metadata or {}
+    if meta2.get("geo_transform") is None:
+        t2_transform = _extract_geotransform(t2_local)
+        if t2_transform is not None:
+            job.t2_scene.metadata = {**meta2, "geo_transform": t2_transform}
+            job.t2_scene.save(update_fields=["metadata"])
+            logger.info("Cached T2 geo-transform from GeoTIFF into ImageScene.metadata")
 
     # Both worker and ml-service see /shared/imagery — no path translation needed.
+    # The ml-service now returns polygon coords already scaled to original-image
+    # pixel space (it reads the source dimensions before resizing for inference).
     try:
         polygons = _call_ml_service(str(t1_local), str(t2_local))
     except (httpx.HTTPError, httpx.TimeoutException) as exc:
@@ -279,6 +296,8 @@ def _run_pipeline(job: DetectionJob) -> int:
         confidence = poly_data["confidence"]
         area_sqm = poly_data["area_sqm"]
 
+        # pixel_coords are already in original T1 image pixel space — apply
+        # the T1 geo-transform directly (no additional scaling needed).
         footprint = _pixel_polygon_to_wgs84(pixel_coords, transform)
         fp_hash = hashlib.sha256(footprint.wkb).hexdigest()
 

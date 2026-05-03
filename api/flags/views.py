@@ -75,10 +75,10 @@ def _crop_box(
     ext = footprint.extent
     lng_min, lat_min, lng_max, lat_max = ext
 
-    col_min = int((lng_min - origin_lng) / deg_per_pixel)
-    col_max = int((lng_max - origin_lng) / deg_per_pixel)
-    row_min = int((origin_lat - lat_max) / deg_per_pixel)
-    row_max = int((origin_lat - lat_min) / deg_per_pixel)
+    col_min = round((lng_min - origin_lng) / deg_per_pixel)
+    col_max = round((lng_max - origin_lng) / deg_per_pixel)
+    row_min = round((origin_lat - lat_max) / deg_per_pixel)
+    row_max = round((origin_lat - lat_min) / deg_per_pixel)
 
     # Pad
     left  = col_min - _PAD
@@ -126,8 +126,8 @@ def _wgs84_to_crop_pixels(
     crop_left, crop_top = crop_origin
     result = []
     for lng, lat in footprint.coords[0]:  # exterior ring
-        col = int((lng - origin_lng) / deg_per_pixel) - crop_left
-        row = int((origin_lat - lat) / deg_per_pixel) - crop_top
+        col = round((lng - origin_lng) / deg_per_pixel) - crop_left
+        row = round((origin_lat - lat) / deg_per_pixel) - crop_top
         result.append((col, row))
     return result
 
@@ -158,9 +158,21 @@ def _build_tile(flag, which: str) -> bytes:
     job = detection.job
     scene = job.t1_scene if which == "t1" else job.t2_scene
 
-    # Geo-transform: prefer scene metadata, fall back to T1 metadata
+    # Use the displayed scene's own geo-transform for the crop box and polygon
+    # overlay.  T1 and T2 may have different tile origins, so using T1's
+    # transform for a T2 overlay would produce a systematic pixel offset.
+    # Fall back to T1 only when T2 metadata is genuinely absent (e.g. older
+    # jobs ingested before T2 transforms were stored).
     meta = scene.metadata or {}
-    transform = meta.get("geo_transform") or (job.t1_scene.metadata or {}).get("geo_transform")
+    transform = meta.get("geo_transform")
+    if transform is None and which == "t2":
+        transform = (job.t1_scene.metadata or {}).get("geo_transform")
+        if transform:
+            logger.warning(
+                "Flag #%d: T2 scene #%d has no geo_transform — falling back to T1. "
+                "Re-run the detection job to store T2 metadata.",
+                flag.id, scene.id,
+            )
     if not transform:
         raise ValueError(f"No geo_transform in scene #{scene.id} metadata")
 
@@ -236,9 +248,31 @@ class FlagViewSet(
             return FlagDetailSerializer
         return FlagListSerializer
 
-    @action(detail=False, methods=["get"], url_path="export.csv", url_name="export_csv")
+    @action(detail=False, methods=["get"], url_path="export.csv", url_name="export_csv",
+            permission_classes=[AllowAny])
     def export_csv(self, request: Request) -> StreamingHttpResponse:
-        """Stream all filtered flags as a CSV download."""
+        """Stream all filtered flags as a CSV download.
+
+        Accepts JWT via Authorization header OR ?token= query param so that
+        a plain <a href> navigation (which cannot set headers) works.
+        """
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+        from rest_framework_simplejwt.exceptions import TokenError
+
+        user = request.user if request.user and request.user.is_authenticated else None
+        if not user:
+            raw = request.query_params.get("token")
+            if raw:
+                try:
+                    jwt_auth = JWTAuthentication()
+                    validated = jwt_auth.get_validated_token(raw)
+                    user = jwt_auth.get_user(validated)
+                except (TokenError, Exception):
+                    pass
+        if not user or not user.is_authenticated:
+            from rest_framework.response import Response as DRFResponse
+            return DRFResponse({"detail": "Authentication credentials were not provided."}, status=401)
+
         qs = self.filter_queryset(self.get_queryset())
 
         today = date.today().isoformat()

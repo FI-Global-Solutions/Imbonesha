@@ -163,12 +163,19 @@ class ChangeDetector:
 
         Returns:
             List of polygon dicts, each with keys:
-              - ``polygon``: GeoJSON-shaped coordinate list [[lng, lat], ...]
-                (pixel coords if no geo transform available)
+              - ``polygon``: list of [col, row] in *original image pixel space*
+                (not inference-grid space — already scaled back up).
               - ``confidence``: Mean model probability within the polygon.
               - ``area_sqm``: Estimated area in square metres.
         """
+        # Read original dimensions before prepare_pair resizes the image.
+        orig_h, orig_w = _read_image_size(t1_path)
+
         t1_arr, t2_arr, cloud_mask = prepare_pair(t1_path, t2_path)
+
+        # prepare_pair resizes to (256, 256) by default.
+        inf_h, inf_w = t1_arr.shape[:2]
+
         prob_map = self._predict(t1_arr, t2_arr)
 
         # Zero out cloudy/shadowed areas so they don't generate false positives.
@@ -176,7 +183,11 @@ class ChangeDetector:
 
         binary_mask = (prob_map >= self.threshold).astype(np.uint8)
 
-        polygons = self._vectorise(binary_mask, prob_map)
+        # Scale factors to convert inference-grid pixels → original-image pixels.
+        scale_x = orig_w / inf_w
+        scale_y = orig_h / inf_h
+
+        polygons = self._vectorise(binary_mask, prob_map, scale_x=scale_x, scale_y=scale_y)
         return polygons
 
     def _predict(self, t1: np.ndarray, t2: np.ndarray) -> np.ndarray:
@@ -194,13 +205,19 @@ class ChangeDetector:
         self,
         binary_mask: np.ndarray,
         prob_map: np.ndarray,
+        scale_x: float = 1.0,
+        scale_y: float = 1.0,
     ) -> list[dict[str, Any]]:
         """Convert a binary mask to filtered polygon dicts.
 
-        Pixels coords are used directly (no geo transform).  The caller is
-        responsible for projecting pixel polygons to geographic space if
-        needed — for the stub pipeline the spatial join is done via the
-        parcel boundary, not the polygon coordinates.
+        Polygon coordinates are returned in *original image pixel space*:
+        each (col, row) is multiplied by (scale_x, scale_y) before being
+        added to the result, so the caller can apply the geo-transform of
+        the full-resolution image directly.
+
+        Area filtering is also performed in original-image pixel space so
+        that min/max_polygon_sqm thresholds remain consistent regardless of
+        inference resolution.
         """
         try:
             from rasterio.features import shapes as rio_shapes  # type: ignore
@@ -211,17 +228,19 @@ class ChangeDetector:
 
         results = []
         h, w = binary_mask.shape
-        # pixels per square metre approximation — used for area filtering.
-        # For real geo images this should come from the image transform.
-        px_per_m = 1.0 / 2.0  # assume 2 m/px default
+        # pixel_size_m in original-image space (2 m/px default at full res).
+        pixel_size_m = 2.0
+        # After scaling, each pixel in the inference grid represents
+        # (scale_x * scale_y) original pixels.
+        orig_px_per_inf_px = scale_x * scale_y
+        sqm_per_inf_px = (pixel_size_m ** 2) * orig_px_per_inf_px
 
         for geom, val in rio_shapes(binary_mask, mask=binary_mask):
             if int(val) != 1:
                 continue
 
             poly = shapely_shape(geom)
-            area_px = poly.area
-            area_sqm = area_px / (px_per_m ** 2)
+            area_sqm = poly.area * sqm_per_inf_px
 
             if area_sqm < settings.min_polygon_sqm:
                 continue
@@ -237,8 +256,14 @@ class ChangeDetector:
             roi = prob_map[miny:maxy, minx:maxx]
             confidence = float(roi.mean()) if roi.size > 0 else float(self.threshold)
 
+            # Scale coords from inference-grid space → original-image pixel space.
+            scaled_coords = [
+                [col * scale_x, row * scale_y]
+                for col, row in poly.exterior.coords
+            ]
+
             results.append({
-                "polygon": list(poly.exterior.coords),
+                "polygon": scaled_coords,
                 "confidence": round(confidence, 4),
                 "area_sqm": round(area_sqm, 1),
             })
@@ -250,6 +275,30 @@ class ChangeDetector:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _read_image_size(path: str | Path) -> tuple[int, int]:
+    """Return (height, width) of an image without loading all pixel data.
+
+    Tries rasterio first (GeoTIFF), falls back to PIL.  Returns (256, 256)
+    on any error so the scale factor defaults to 1.0 and behaviour is
+    unchanged for synthetic test images that are already 256×256.
+    """
+    path = Path(path)
+    try:
+        import rasterio  # type: ignore
+        with rasterio.open(path) as src:
+            return src.height, src.width
+    except Exception:
+        pass
+    try:
+        from PIL import Image  # type: ignore
+        with Image.open(path) as img:
+            w, h = img.size
+            return h, w
+    except Exception:
+        logger.warning("Could not read image size from %s — assuming 256×256", path)
+        return 256, 256
 
 
 def _pick_device() -> str:
