@@ -34,9 +34,25 @@ class FlagStatus(models.TextChoices):
     PENDING = "pending", "Pending"
     ASSIGNED = "assigned", "Assigned"
     IN_REVIEW = "in_review", "In Review"
-    CONFIRMED = "confirmed", "Confirmed"
+    CONFIRMED = "confirmed", "Confirmed Unauthorized"
     DISMISSED = "dismissed", "Dismissed"
+    MONITORING = "monitoring", "Under Monitoring"
+    INACCESSIBLE = "inaccessible", "Inaccessible"
+    DATA_ERROR = "data_error", "Data Error"
     CLOSED = "closed", "Closed"
+
+
+VALID_TRANSITIONS: dict[str, set[str]] = {
+    "pending":      {"assigned", "dismissed"},
+    "assigned":     {"in_review", "confirmed", "dismissed", "monitoring", "inaccessible", "data_error", "pending"},
+    "in_review":    {"confirmed", "dismissed", "monitoring", "inaccessible", "data_error"},
+    "confirmed":    {"closed"},
+    "dismissed":    {"closed", "pending"},
+    "monitoring":   {"assigned"},
+    "inaccessible": {"assigned"},
+    "data_error":   {"closed"},
+    "closed":       set(),
+}
 
 
 class Flag(models.Model):
@@ -74,6 +90,14 @@ class Flag(models.Model):
         related_name="assigned_flags",
         limit_choices_to={"role": "inspector"},
     )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="flags_assigned_by",
+    )
+    assigned_at = models.DateTimeField(null=True, blank=True)
 
     # Denormalised district from detection → parcel for fast row-level filtering.
     # Populated at flag creation; never changes after that.
@@ -96,6 +120,38 @@ class Flag(models.Model):
         parcel = self.detection.parcel_id or "unmatched"
         return f"Flag #{self.pk} [{self.severity}/{self.status}] — {parcel}"
 
+    def can_transition_to(self, new_status: str) -> bool:
+        return new_status in VALID_TRANSITIONS.get(self.status, set())
+
+    def transition_to(self, new_status: str, actor, message: str = "") -> None:
+        if not self.can_transition_to(new_status):
+            raise ValueError(f"Cannot transition from {self.status!r} to {new_status!r}")
+        old_status = self.status
+        self.status = new_status
+        self._actor = actor
+        self._pre_save_snapshot = {
+            "status": old_status,
+            "severity": self.severity,
+            "assigned_to_id": self.assigned_to_id,
+        }
+        self.save(update_fields=["status", "updated_at"])
+        AuditLog.objects.create(
+            flag=self,
+            actor=actor,
+            event="status_changed",
+            before={"status": old_status},
+            after={"status": new_status},
+            message=message or f"Status changed from {old_status} to {new_status}",
+        )
+
+
+class InspectionVerdict(models.TextChoices):
+    CONFIRMED = "confirmed", "Confirmed Unauthorized"
+    DISMISSED = "dismissed", "Dismissed — False Positive"
+    MONITORING = "monitoring", "Under Monitoring"
+    INACCESSIBLE = "inaccessible", "Site Inaccessible"
+    DATA_ERROR = "data_error", "Data Error — Wrong Location"
+
 
 class Inspection(models.Model):
     """Field inspection verdict submitted by an inspector.
@@ -111,15 +167,16 @@ class Inspection(models.Model):
         related_name="inspections",
     )
 
-    verdict = models.CharField(
-        max_length=32,
-        choices=[
-            ("confirmed", "Confirmed — construction is unauthorised"),
-            ("dismissed", "Dismissed — no violation found"),
-            ("needs_review", "Needs senior review"),
-        ],
-    )
+    verdict = models.CharField(max_length=32, choices=InspectionVerdict.choices)
     notes = models.TextField(blank=True, default="")
+
+    construction_stage = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="foundation / walls / roofing / finishing / completed / demolished / none_visible",
+    )
+    estimated_floors = models.PositiveIntegerField(null=True, blank=True)
+    occupancy_observed = models.BooleanField(default=False)
+
     visited_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
 
