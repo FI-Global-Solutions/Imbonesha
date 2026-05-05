@@ -22,8 +22,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
+from accounts.models import User, UserRole
 from .filters import FlagFilter
-from .models import Flag, Report
+from .models import AuditLog, Flag, Inspection, InspectionVerdict, Report
 from .serializers import FlagDetailSerializer, FlagListSerializer, ReportSerializer
 
 if TYPE_CHECKING:
@@ -269,21 +270,228 @@ class FlagViewSet(
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        return (
+        qs = (
             Flag.objects
             .select_related(
                 "detection__job__t1_scene",
                 "detection__job__t2_scene",
                 "detection__parcel",
+                "assigned_to",
+                "assigned_by",
             )
-            .prefetch_related("detection__parcel__permits")
+            .prefetch_related(
+                "detection__parcel__permits",
+                "inspections__inspector",
+                "audit_logs__actor",
+            )
             .order_by("-created_at")
         )
+        user = self.request.user
+        if user.role == UserRole.INSPECTOR:
+            qs = qs.filter(assigned_to=user)
+        elif user.role == UserRole.DISTRICT_ADMIN and user.district:
+            qs = qs.filter(district=user.district)
+        return qs
 
     def get_serializer_class(self):
-        if self.action == "retrieve" or self.action == "imagery":
+        if self.action in ("retrieve", "imagery", "assign", "unassign", "inspect"):
             return FlagDetailSerializer
         return FlagListSerializer
+
+    def _require_admin(self, request) -> Response | None:
+        """Return 403 Response if user cannot assign flags, else None."""
+        if request.user.role not in (UserRole.ADMIN, UserRole.DISTRICT_ADMIN):
+            return Response(
+                {"detail": "You do not have permission to assign flags."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
+    @action(detail=True, methods=["post"], url_path="assign")
+    def assign(self, request: Request, pk=None) -> Response:
+        denied = self._require_admin(request)
+        if denied:
+            return denied
+
+        flag = self.get_object()
+        inspector_id = request.data.get("inspector_id")
+        if not inspector_id:
+            return Response({"detail": "inspector_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            inspector = User.objects.get(pk=inspector_id, role=UserRole.INSPECTOR)
+        except User.DoesNotExist:
+            return Response({"detail": "Inspector not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not flag.can_transition_to("assigned"):
+            return Response(
+                {"detail": f"Cannot assign a flag with status '{flag.status}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_status = flag.status
+        flag.assigned_to = inspector
+        flag.assigned_by = request.user
+        flag.assigned_at = timezone.now()
+        flag.status = "assigned"
+        flag._actor = request.user
+        flag._pre_save_snapshot = {"status": old_status, "severity": flag.severity, "assigned_to_id": None}
+        flag.save(update_fields=["status", "assigned_to", "assigned_by", "assigned_at", "updated_at"])
+
+        AuditLog.objects.create(
+            flag=flag,
+            actor=request.user,
+            event="assigned",
+            before={"status": old_status, "assigned_to": None},
+            after={"status": "assigned", "assigned_to": inspector.email},
+            message=f"Assigned to {inspector.get_full_name() or inspector.email} by {request.user.email}",
+        )
+        return Response(FlagDetailSerializer(flag, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], url_path="unassign")
+    def unassign(self, request: Request, pk=None) -> Response:
+        denied = self._require_admin(request)
+        if denied:
+            return denied
+
+        flag = self.get_object()
+        if flag.status != "assigned":
+            return Response(
+                {"detail": "Only assigned flags can be unassigned."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        prev_inspector = flag.assigned_to
+        flag.assigned_to = None
+        flag.assigned_by = None
+        flag.assigned_at = None
+        flag.status = "pending"
+        flag._actor = request.user
+        flag._pre_save_snapshot = {"status": "assigned", "severity": flag.severity, "assigned_to_id": prev_inspector.pk if prev_inspector else None}
+        flag.save(update_fields=["status", "assigned_to", "assigned_by", "assigned_at", "updated_at"])
+
+        AuditLog.objects.create(
+            flag=flag,
+            actor=request.user,
+            event="unassigned",
+            before={"status": "assigned", "assigned_to": prev_inspector.email if prev_inspector else None},
+            after={"status": "pending", "assigned_to": None},
+            message=f"Unassigned by {request.user.email}",
+        )
+        return Response(FlagDetailSerializer(flag, context={"request": request}).data)
+
+    @action(detail=False, methods=["post"], url_path="bulk-assign")
+    def bulk_assign(self, request: Request) -> Response:
+        denied = self._require_admin(request)
+        if denied:
+            return denied
+
+        flag_ids = request.data.get("flag_ids", [])
+        inspector_id = request.data.get("inspector_id")
+
+        if not flag_ids:
+            return Response({"detail": "flag_ids is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not inspector_id:
+            return Response({"detail": "inspector_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            inspector = User.objects.get(pk=inspector_id, role=UserRole.INSPECTOR)
+        except User.DoesNotExist:
+            return Response({"detail": "Inspector not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        flags = Flag.objects.filter(id__in=flag_ids)
+        now = timezone.now()
+        assigned = skipped = 0
+        errors = []
+
+        for flag in flags:
+            if not flag.can_transition_to("assigned"):
+                skipped += 1
+                errors.append({"flag_id": flag.id, "reason": f"Cannot assign from status '{flag.status}'"})
+                continue
+            old_status = flag.status
+            flag.assigned_to = inspector
+            flag.assigned_by = request.user
+            flag.assigned_at = now
+            flag.status = "assigned"
+            flag._actor = request.user
+            flag._pre_save_snapshot = {"status": old_status, "severity": flag.severity, "assigned_to_id": None}
+            flag.save(update_fields=["status", "assigned_to", "assigned_by", "assigned_at", "updated_at"])
+            AuditLog.objects.create(
+                flag=flag,
+                actor=request.user,
+                event="assigned",
+                before={"status": old_status, "assigned_to": None},
+                after={"status": "assigned", "assigned_to": inspector.email},
+                message=f"Bulk assigned to {inspector.get_full_name() or inspector.email} by {request.user.email}",
+            )
+            assigned += 1
+
+        return Response({"assigned": assigned, "skipped": skipped, "errors": errors})
+
+    @action(detail=True, methods=["post"], url_path="inspect")
+    def inspect(self, request: Request, pk=None) -> Response:
+        flag = self.get_object()
+        user = request.user
+
+        # Only the assigned inspector can submit an inspection.
+        if user.role == UserRole.INSPECTOR and flag.assigned_to != user:
+            return Response(
+                {"detail": "You can only inspect flags assigned to you."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if user.role not in (UserRole.ADMIN, UserRole.DISTRICT_ADMIN, UserRole.INSPECTOR):
+            return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        verdict = request.data.get("verdict")
+        if verdict not in InspectionVerdict.values:
+            return Response(
+                {"detail": f"verdict must be one of: {', '.join(InspectionVerdict.values)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        visited_at = request.data.get("visited_at")
+        if not visited_at:
+            return Response({"detail": "visited_at is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        inspection = Inspection.objects.create(
+            flag=flag,
+            inspector=user,
+            verdict=verdict,
+            notes=request.data.get("notes", ""),
+            construction_stage=request.data.get("construction_stage", ""),
+            estimated_floors=request.data.get("estimated_floors"),
+            occupancy_observed=bool(request.data.get("occupancy_observed", False)),
+            visited_at=visited_at,
+        )
+
+        # Map verdict directly to flag status (immediate transition, no in_review gate).
+        verdict_to_status = {
+            "confirmed": "confirmed",
+            "dismissed": "dismissed",
+            "monitoring": "monitoring",
+            "inaccessible": "inaccessible",
+            "data_error": "data_error",
+        }
+        new_status = verdict_to_status[verdict]
+        old_status = flag.status
+
+        flag._actor = user
+        flag._pre_save_snapshot = {"status": old_status, "severity": flag.severity, "assigned_to_id": flag.assigned_to_id}
+        flag.status = new_status
+        flag.save(update_fields=["status", "updated_at"])
+
+        AuditLog.objects.create(
+            flag=flag,
+            actor=user,
+            event="inspection_submitted",
+            before={"status": old_status},
+            after={"status": new_status, "verdict": verdict},
+            message=f"Inspection submitted by {user.get_full_name() or user.email}: {InspectionVerdict(verdict).label}",
+        )
+
+        flag.refresh_from_db()
+        return Response(FlagDetailSerializer(flag, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="export.csv", url_name="export_csv",
             permission_classes=[AllowAny])
@@ -585,6 +793,36 @@ class AnalyticsView(APIView):
         }
         cache.set(CACHE_KEY, payload, 60)
         return Response(payload)
+
+
+# ---------------------------------------------------------------------------
+# Inspectors workload
+# ---------------------------------------------------------------------------
+
+class InspectorWorkloadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        if request.user.role not in (UserRole.ADMIN, UserRole.DISTRICT_ADMIN):
+            return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        qs = User.objects.filter(role=UserRole.INSPECTOR)
+        if request.user.role == UserRole.DISTRICT_ADMIN and request.user.district:
+            qs = qs.filter(district=request.user.district)
+
+        result = []
+        for inspector in qs.order_by("first_name", "last_name"):
+            assigned_count = Flag.objects.filter(assigned_to=inspector, status="assigned").count()
+            completed_count = Inspection.objects.filter(inspector=inspector).count()
+            result.append({
+                "inspector_id": inspector.pk,
+                "name": inspector.get_full_name() or inspector.email,
+                "email": inspector.email,
+                "district": inspector.district,
+                "assigned_count": assigned_count,
+                "completed_count": completed_count,
+            })
+        return Response(result)
 
 
 # ---------------------------------------------------------------------------

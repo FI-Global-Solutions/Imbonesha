@@ -14,7 +14,7 @@ from .models import AuditLog, Flag
 logger = logging.getLogger(__name__)
 
 # Fields whose changes we track in the audit log.
-_TRACKED_FIELDS = ("status", "severity", "assigned_to_id", "notes")
+_TRACKED_FIELDS = ("status", "severity", "assigned_to_id")
 
 
 @receiver(post_save, sender=Flag)

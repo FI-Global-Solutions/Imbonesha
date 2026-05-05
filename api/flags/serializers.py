@@ -7,11 +7,12 @@ image scene IDs. No secondary round-trips required.
 
 from rest_framework import serializers
 
+from accounts.models import User
 from detections.models import Detection
 from imagery.models import ImageScene
 from parcels.models import Parcel, Permit
 
-from .models import Flag, Report
+from .models import AuditLog, Flag, Inspection, Report, VALID_TRANSITIONS
 
 
 class _PermitSerializer(serializers.ModelSerializer):
@@ -85,6 +86,8 @@ class FlagListSerializer(serializers.ModelSerializer):
     centroid_lat = serializers.SerializerMethodField()
     centroid_lng = serializers.SerializerMethodField()
     permit_status = serializers.SerializerMethodField()
+    assigned_to_name = serializers.SerializerMethodField()
+    assigned_by_email = serializers.SerializerMethodField()
 
     class Meta:
         model = Flag
@@ -92,6 +95,7 @@ class FlagListSerializer(serializers.ModelSerializer):
             "id", "severity", "status", "district",
             "parcel_upi", "owner_name", "permit_status",
             "centroid_lat", "centroid_lng",
+            "assigned_to_name", "assigned_at", "assigned_by_email",
             "created_at", "updated_at",
         )
 
@@ -112,6 +116,14 @@ class FlagListSerializer(serializers.ModelSerializer):
         c = obj.detection.footprint.centroid
         return round(c.x, 6) if c else None
 
+    def get_assigned_to_name(self, obj: Flag) -> str | None:
+        if obj.assigned_to:
+            return obj.assigned_to.get_full_name() or obj.assigned_to.email
+        return None
+
+    def get_assigned_by_email(self, obj: Flag) -> str | None:
+        return obj.assigned_by.email if obj.assigned_by else None
+
     def get_permit_status(self, obj: Flag) -> str | None:
         try:
             parcel = obj.detection.parcel
@@ -130,12 +142,59 @@ class FlagListSerializer(serializers.ModelSerializer):
             return None
 
 
+class _InspectorSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ("id", "email", "full_name", "district")
+
+    def get_full_name(self, obj: User) -> str:
+        return obj.get_full_name() or obj.email
+
+
+class _InspectionSerializer(serializers.ModelSerializer):
+    inspector_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Inspection
+        fields = (
+            "id", "verdict", "notes", "construction_stage",
+            "estimated_floors", "occupancy_observed",
+            "visited_at", "submitted_at", "inspector_name",
+        )
+
+    def get_inspector_name(self, obj: Inspection) -> str:
+        return obj.inspector.get_full_name() or obj.inspector.email
+
+
+class _AuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuditLog
+        fields = ("id", "event", "before", "after", "message", "actor_name", "timestamp")
+
+    def get_actor_name(self, obj: AuditLog) -> str | None:
+        if obj.actor:
+            return obj.actor.get_full_name() or obj.actor.email
+        return None
+
+
 class FlagDetailSerializer(FlagListSerializer):
     parcel = serializers.SerializerMethodField()
     detection = serializers.SerializerMethodField()
+    assigned_to = serializers.SerializerMethodField()
+    inspections = serializers.SerializerMethodField()
+    audit_logs = serializers.SerializerMethodField()
+    available_transitions = serializers.SerializerMethodField()
 
     class Meta(FlagListSerializer.Meta):
-        fields = FlagListSerializer.Meta.fields + ("parcel", "detection", "notes")
+        fields = FlagListSerializer.Meta.fields + (
+            "parcel", "detection", "notes",
+            "assigned_to", "assigned_at", "assigned_by_email",
+            "inspections", "audit_logs", "available_transitions",
+        )
 
     def get_parcel(self, obj: Flag) -> dict | None:
         try:
@@ -145,6 +204,20 @@ class FlagDetailSerializer(FlagListSerializer):
 
     def get_detection(self, obj: Flag) -> dict:
         return _DetectionSerializer(obj.detection).data
+
+    def get_assigned_to(self, obj: Flag) -> dict | None:
+        if obj.assigned_to:
+            return _InspectorSerializer(obj.assigned_to).data
+        return None
+
+    def get_inspections(self, obj: Flag) -> list:
+        return _InspectionSerializer(obj.inspections.all(), many=True).data
+
+    def get_audit_logs(self, obj: Flag) -> list:
+        return _AuditLogSerializer(obj.audit_logs.all()[:20], many=True).data
+
+    def get_available_transitions(self, obj: Flag) -> list[str]:
+        return sorted(VALID_TRANSITIONS.get(obj.status, set()))
 
 
 class ReportSerializer(serializers.ModelSerializer):
