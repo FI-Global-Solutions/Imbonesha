@@ -3,6 +3,7 @@ import { apiClient } from "./client";
 import type {
   User, FlagListItem, FlagDetail, FlagImagery,
   PaginatedResponse, DetectionJob, Report, AnalyticsSummary,
+  InspectorWorkload,
 } from "./types";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -54,6 +55,54 @@ export function useFlagImagery(id: number | null) {
     queryFn: () => apiClient.get(`/flags/${id}/imagery/`).then((r) => r.data),
     enabled: id !== null,
     staleTime: 10 * 60_000,
+  });
+}
+
+// ── Flag mutations ────────────────────────────────────────────────────────────
+
+export function useAssignFlag() {
+  const qc = useQueryClient();
+  return useMutation<FlagDetail, Error, { flagId: number; inspector_id: number }>({
+    mutationFn: ({ flagId, inspector_id }) =>
+      apiClient.post(`/flags/${flagId}/assign/`, { inspector_id }).then((r) => r.data),
+    onSuccess: (_, { flagId }) => {
+      qc.invalidateQueries({ queryKey: ["flags"] });
+      qc.invalidateQueries({ queryKey: ["flag", flagId] });
+      qc.invalidateQueries({ queryKey: ["inspector-workload"] });
+    },
+  });
+}
+
+export function useUnassignFlag() {
+  const qc = useQueryClient();
+  return useMutation<FlagDetail, Error, number>({
+    mutationFn: (flagId) =>
+      apiClient.post(`/flags/${flagId}/unassign/`).then((r) => r.data),
+    onSuccess: (_, flagId) => {
+      qc.invalidateQueries({ queryKey: ["flags"] });
+      qc.invalidateQueries({ queryKey: ["flag", flagId] });
+      qc.invalidateQueries({ queryKey: ["inspector-workload"] });
+    },
+  });
+}
+
+export function useBulkAssignFlags() {
+  const qc = useQueryClient();
+  return useMutation<{ assigned: number; skipped: number; errors: unknown[] }, Error, { flag_ids: number[]; inspector_id: number }>({
+    mutationFn: (payload) =>
+      apiClient.post("/flags/bulk-assign/", payload).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["flags"] });
+      qc.invalidateQueries({ queryKey: ["inspector-workload"] });
+    },
+  });
+}
+
+export function useInspectorWorkload() {
+  return useQuery<InspectorWorkload[]>({
+    queryKey: ["inspector-workload"],
+    queryFn: () => apiClient.get("/inspectors/workload/").then((r) => r.data),
+    staleTime: 30_000,
   });
 }
 

@@ -1,5 +1,5 @@
 export type Severity = "critical" | "high" | "medium" | "low";
-export type FlagStatus = "pending" | "assigned" | "in_review" | "confirmed" | "dismissed" | "closed";
+export type FlagStatus = "pending" | "assigned" | "in_review" | "confirmed" | "dismissed" | "monitoring" | "inaccessible" | "data_error" | "closed";
 export type PermitStatus = "active" | "expired" | "revoked" | "pending" | "no_permit" | "no_parcel" | "other" | null;
 
 export interface User {
@@ -54,6 +54,44 @@ export interface Detection {
   t2_scene: SceneRef | null;
 }
 
+export interface InspectorRef {
+  id: number;
+  email: string;
+  full_name: string;
+  district: string;
+}
+
+export interface Inspection {
+  id: number;
+  verdict: string;
+  notes: string;
+  construction_stage: string;
+  estimated_floors: number | null;
+  occupancy_observed: boolean;
+  visited_at: string | null;
+  submitted_at: string;
+  inspector_name: string;
+}
+
+export interface AuditLog {
+  id: string;
+  event: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  message: string;
+  actor_name: string | null;
+  timestamp: string;
+}
+
+export interface InspectorWorkload {
+  inspector_id: number;
+  name: string;
+  email: string;
+  district: string;
+  assigned_count: number;
+  completed_count: number;
+}
+
 export interface FlagListItem {
   id: number;
   severity: Severity;
@@ -64,6 +102,9 @@ export interface FlagListItem {
   permit_status: PermitStatus;
   centroid_lat: number | null;
   centroid_lng: number | null;
+  assigned_to_name: string | null;
+  assigned_at: string | null;
+  assigned_by_email: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +113,10 @@ export interface FlagDetail extends FlagListItem {
   parcel: Parcel | null;
   detection: Detection;
   notes: string;
+  assigned_to: InspectorRef | null;
+  inspections: Inspection[];
+  audit_logs: AuditLog[];
+  available_transitions: string[];
 }
 
 export interface FlagImagery {

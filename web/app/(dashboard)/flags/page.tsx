@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -14,12 +14,12 @@ import {
 import { formatDistanceToNow, format } from "date-fns";
 import {
   Download, Search, X, ChevronUp, ChevronDown, ChevronsUpDown,
-  MoreHorizontal, ExternalLink, FileText, Eye,
+  MoreHorizontal, ExternalLink, FileText, Eye, UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { TopBar } from "@/components/top-bar";
-
+import { AssignInspectorDialog } from "@/components/assign-inspector-dialog";
 import { GenerateReportDialog } from "@/components/generate-report-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,10 +38,10 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
-import { useFlags } from "@/lib/api/hooks";
+import { useFlags, useMe } from "@/lib/api/hooks";
 import { useUIStore } from "@/lib/store";
 import { getCookie } from "@/lib/api/client";
-import { SEVERITY_BADGE_CLASS, SEVERITY_LABEL, STATUS_BADGE_CLASS } from "@/lib/severity";
+import { SEVERITY_BADGE_CLASS, SEVERITY_LABEL, STATUS_BADGE_CLASS, STATUS_LABEL } from "@/lib/severity";
 import type { FlagListItem, Severity, FlagStatus, PermitStatus } from "@/lib/api/types";
 
 const ADMIN_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007";
@@ -65,13 +65,16 @@ function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
 
 export default function FlagsPage() {
   const { openDrawer } = useUIStore();
+  const { data: me } = useMe();
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sorting, setSorting] = useState<SortingState>([{ id: "created_at", desc: true }]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [preselectedFlagIds, setPreselectedFlagIds] = useState<number[]>([]);
+  const canAssign = me?.role === "admin" || me?.role === "district_admin";
 
   const { data, isLoading } = useFlags({ limit: 500 });
   const allFlags = data?.results ?? [];
@@ -195,7 +198,7 @@ export default function FlagsPage() {
         const v = getValue() as FlagStatus;
         return (
           <Badge variant="outline" className={STATUS_BADGE_CLASS[v]}>
-            {v.replace("_", " ")}
+            {STATUS_LABEL[v] ?? v}
           </Badge>
         );
       },
@@ -381,6 +384,9 @@ export default function FlagsPage() {
                 <SelectItem value="in_review">In review</SelectItem>
                 <SelectItem value="confirmed">Confirmed</SelectItem>
                 <SelectItem value="dismissed">Dismissed</SelectItem>
+                <SelectItem value="monitoring">Monitoring</SelectItem>
+                <SelectItem value="inaccessible">Inaccessible</SelectItem>
+                <SelectItem value="data_error">Data error</SelectItem>
                 <SelectItem value="closed">Closed</SelectItem>
               </SelectContent>
             </Select>
@@ -473,6 +479,17 @@ export default function FlagsPage() {
           <span className="text-sm font-medium">
             {selectedIds.length} selected
           </span>
+          {canAssign && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => setAssignDialogOpen(true)}
+            >
+              <UserCheck className="h-3.5 w-3.5" />
+              Assign inspector
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -501,6 +518,13 @@ export default function FlagsPage() {
         onOpenChange={setReportDialogOpen}
         preselectedFlagIds={preselectedFlagIds}
         onClose={() => { setReportDialogOpen(false); setPreselectedFlagIds([]); setRowSelection({}); }}
+      />
+
+      <AssignInspectorDialog
+        open={assignDialogOpen}
+        onOpenChange={setAssignDialogOpen}
+        flagIds={selectedIds}
+        onSuccess={() => setRowSelection({})}
       />
     </div>
   );
