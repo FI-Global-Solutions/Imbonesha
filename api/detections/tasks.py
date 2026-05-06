@@ -87,7 +87,6 @@ def _call_ml_service(t1_path: str, t2_path: str) -> list[dict[str, Any]]:
     payload = {
         "t1_path": t1_path,
         "t2_path": t2_path,
-        "threshold": 0.5,
     }
 
     logger.info("Calling ml-service: POST %s", url)
@@ -425,7 +424,7 @@ def run_detection_job(self, t1_scene_id: int, t2_scene_id: int) -> dict:
         t1_scene=t1_scene,
         t2_scene=t2_scene,
         status=JobStatus.RUNNING,
-        model_version="siamese-unet-v2",
+        model_version="siamese-unet-v3",
         started_at=timezone.now(),
     )
 

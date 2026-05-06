@@ -114,6 +114,7 @@ def evaluate(
     data_dir: Path,
     threshold: float,
     output_dir: Path,
+    split: str = "test",
     dropout: float = 0.0,
 ) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -125,22 +126,22 @@ def evaluate(
         threshold=threshold,
     )
 
-    a_dir = data_dir / "A"
-    b_dir = data_dir / "B"
-    lbl_dir = data_dir / "label"
+    # Support both flat layout (root/A/{split}_*.png) and split-subdir layout.
+    flat_a = data_dir / "A"
+    subdir_a = data_dir / split / "A"
 
-    if not a_dir.exists():
-        # Flat layout: data_dir is LEVIR-CD root, test split
-        # Try root/A with test_ prefix
-        root = data_dir
-        a_dir = root / "A"
-        b_dir = root / "B"
-        lbl_dir = root / "label"
-        pairs = sorted(
-            p for p in a_dir.glob("*.png") if p.stem.startswith("test")
-        )
-    else:
+    if subdir_a.exists():
+        a_dir = subdir_a
+        b_dir = data_dir / split / "B"
+        lbl_dir = data_dir / split / "label"
         pairs = sorted(a_dir.glob("*.png"))
+    elif flat_a.exists():
+        a_dir = flat_a
+        b_dir = data_dir / "B"
+        lbl_dir = data_dir / "label"
+        pairs = sorted(p for p in a_dir.glob("*.png") if p.stem.startswith(split))
+    else:
+        raise FileNotFoundError(f"Cannot find LEVIR-CD data under {data_dir}")
 
     print(f"Evaluating {len(pairs)} pairs from {data_dir} (threshold={threshold})")
 
@@ -216,6 +217,8 @@ def parse_args() -> argparse.Namespace:
                    help="Directory containing A/, B/, label/ subdirs (test split)")
     p.add_argument("--threshold", type=float, default=0.5)
     p.add_argument("--output-dir", type=Path, required=True)
+    p.add_argument("--split", type=str, default="test",
+                   help="Which split to evaluate (default: test)")
     p.add_argument("--dropout", type=float, default=0.0)
     return p.parse_args()
 
@@ -227,5 +230,6 @@ if __name__ == "__main__":
         data_dir=args.data_dir,
         threshold=args.threshold,
         output_dir=args.output_dir,
+        split=args.split,
         dropout=args.dropout,
     )
