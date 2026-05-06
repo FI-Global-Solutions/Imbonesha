@@ -4,15 +4,21 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Map, TableProperties, BarChart3, FileText, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Map, TableProperties, BarChart3, FileText, PanelLeftClose, PanelLeftOpen, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useFlags } from "@/lib/api/hooks";
+import { useFlags, useMe } from "@/lib/api/hooks";
 
-const NAV = [
-  { href: "/",          label: "Map",       icon: Map },
-  { href: "/flags",     label: "Flags",     icon: TableProperties, showBadge: true },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/reports",   label: "Reports",   icon: FileText },
+const ADMIN_NAV = [
+  { href: "/",            label: "Map",            icon: Map },
+  { href: "/flags",       label: "Flags",          icon: TableProperties, showBadge: true },
+  { href: "/analytics",   label: "Analytics",      icon: BarChart3 },
+  { href: "/reports",     label: "Reports",        icon: FileText },
+];
+
+const INSPECTOR_NAV = [
+  { href: "/",            label: "Map",            icon: Map },
+  { href: "/assignments", label: "My Assignments", icon: ClipboardList, showBadge: true },
+  { href: "/analytics",   label: "Analytics",      icon: BarChart3 },
 ];
 
 function LogoMark({ collapsed }: { collapsed: boolean }) {
@@ -51,8 +57,16 @@ function LogoMark({ collapsed }: { collapsed: boolean }) {
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const { data } = useFlags({ limit: 1, status: "pending" });
-  const pendingCount = data?.count ?? 0;
+  const { data: me } = useMe();
+  const isInspector = me?.role === "inspector";
+  const NAV = isInspector ? INSPECTOR_NAV : ADMIN_NAV;
+
+  // Pending badge: pending flags for admin, assigned flags for inspector
+  const { data: pendingData } = useFlags({
+    limit: 1,
+    status: isInspector ? "assigned" : "pending",
+  });
+  const pendingCount = pendingData?.count ?? 0;
 
   useEffect(() => {
     const stored = localStorage.getItem("sidebar-collapsed");

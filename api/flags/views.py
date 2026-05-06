@@ -518,6 +518,8 @@ class FlagViewSet(
             from rest_framework.response import Response as DRFResponse
             return DRFResponse({"detail": "Authentication credentials were not provided."}, status=401)
 
+        request._request.user = user
+        request._user = user  # patch DRF cached user so get_queryset sees it
         qs = self.filter_queryset(self.get_queryset())
 
         today = date.today().isoformat()
@@ -632,6 +634,7 @@ class FlagViewSet(
             return StreamingHttpResponse(status=401)
 
         request._request.user = user
+        request._user = user  # also patch DRF's cached user so get_queryset sees it
         flag = self.get_object()
         which = request.query_params.get("t", "t1")
         scene = flag.detection.job.t1_scene if which == "t1" else flag.detection.job.t2_scene
@@ -749,6 +752,14 @@ class AnalyticsView(APIView):
             else:
                 permit_counts["no_permit"] += 1
 
+        # Flag status breakdown
+        status_qs = (
+            Flag.objects
+            .values("status")
+            .annotate(count=Count("id"))
+        )
+        status_counts = {r["status"]: r["count"] for r in status_qs}
+
         # Detection throughput — by week
         from django.db.models.functions import TruncWeek
         from detections.models import DetectionJob
@@ -789,6 +800,7 @@ class AnalyticsView(APIView):
             "flags_over_time": flags_over_time,
             "flags_by_district": flags_by_district,
             "permit_status_breakdown": permit_counts,
+            "status_breakdown": status_counts,
             "detection_throughput": throughput,
         }
         cache.set(CACHE_KEY, payload, 60)

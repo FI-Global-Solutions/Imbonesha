@@ -131,6 +131,72 @@ function EmptyChart({ height = 260 }: { height?: number }) {
 }
 
 // ---------------------------------------------------------------------------
+// Status distribution bar
+// ---------------------------------------------------------------------------
+
+const STATUS_HEX: Record<string, string> = {
+  pending:      "#94a3b8",
+  assigned:     "#3b82f6",
+  in_review:    "#8b5cf6",
+  confirmed:    "#ef4444",
+  dismissed:    "#64748b",
+  monitoring:   "#f59e0b",
+  inaccessible: "#94a3b8",
+  data_error:   "#94a3b8",
+  closed:       "#22c55e",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  pending:      "Pending",
+  assigned:     "Assigned",
+  in_review:    "In Review",
+  confirmed:    "Confirmed",
+  dismissed:    "Dismissed",
+  monitoring:   "Monitoring",
+  inaccessible: "Inaccessible",
+  data_error:   "Data Error",
+  closed:       "Closed",
+};
+
+function StatusDistribution({ data }: { data?: Record<string, number> }) {
+  if (!data) return <EmptyChart />;
+  const entries = Object.entries(data)
+    .filter(([, v]) => v > 0)
+    .sort(([, a], [, b]) => b - a);
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+  if (total === 0) return <EmptyChart />;
+
+  return (
+    <div className="space-y-3">
+      {entries.map(([status, count]) => {
+        const pct = Math.round((count / total) * 100);
+        const hex = STATUS_HEX[status] ?? "#888";
+        return (
+          <div key={status}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: hex }} />
+                <span className="text-muted-foreground">{STATUS_LABELS[status] ?? status}</span>
+              </div>
+              <span className="font-semibold tabular-nums text-foreground">
+                {count}
+                <span className="font-normal text-muted-foreground ml-1">({pct}%)</span>
+              </span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{ width: `${pct}%`, backgroundColor: hex, opacity: 0.85 }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 export default function AnalyticsPage() {
@@ -445,6 +511,17 @@ export default function AnalyticsPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Status distribution */}
+          <Card>
+            <CardHeader className="border-b pb-4">
+              <CardTitle>Flag status distribution</CardTitle>
+              <CardDescription>Count of flags in each lifecycle state</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {isLoading ? <ChartSkeleton /> : <StatusDistribution data={data?.status_breakdown} />}
+            </CardContent>
+          </Card>
 
           {/* Bottom padding */}
           <div className="h-4" />

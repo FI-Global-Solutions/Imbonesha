@@ -196,5 +196,6 @@ export interface AnalyticsSummary {
   flags_over_time: FlagsOverTimeRow[];
   flags_by_district: { district: string; count: number }[];
   permit_status_breakdown: { active: number; expired: number; no_permit: number; other: number };
+  status_breakdown: Record<string, number>;
   detection_throughput: { week: string; jobs: number; detections: number }[];
 }
