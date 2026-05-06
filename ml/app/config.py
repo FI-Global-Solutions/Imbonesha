@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     checkpoint_path: str = "/app/checkpoints/siamese_unet_v2.pth"
     detection_threshold: float = 0.5
-    min_polygon_sqm: float = 50.0
+    min_polygon_sqm: float = 25.0
     max_polygon_sqm: float = 10_000.0
     # Approximate metres per degree at Kacyiru latitude (-1.94°)
     metres_per_degree: float = 111_000.0

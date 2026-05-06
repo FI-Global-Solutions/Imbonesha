@@ -107,7 +107,7 @@ services:
       dockerfile: Dockerfile
     environment:
       CHECKPOINT_PATH: /app/checkpoints/siamese_unet_v2.pth
-      DETECTION_THRESHOLD: "0.5"
+      DETECTION_THRESHOLD: "0.35"
       LOG_LEVEL: INFO
     volumes:
       - ../ml/app:/app/app
@@ -118,7 +118,14 @@ services:
     ports:
       - "8002:8002"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request;
+            urllib.request.urlopen('http://localhost:8002/health')",
+        ]
       interval: 15s
       timeout: 10s
       retries: 5
