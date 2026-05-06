@@ -53,9 +53,14 @@ class SiameseUNet(nn.Module):
 
     Input:  two (B, 3, H, W) tensors, values in [0, 1].
     Output: (B, 1, H, W) change probability logits (before sigmoid).
+
+    Args:
+        base_ch: Base channel count (32 → ~1.2M parameters).
+        dropout: Dropout rate applied after each decoder block (0 = disabled).
+                 Use 0.3 during training to reduce overfitting.
     """
 
-    def __init__(self, base_ch: int = 32) -> None:
+    def __init__(self, base_ch: int = 32, dropout: float = 0.0) -> None:
         super().__init__()
 
         # Shared encoder (weights tied via the same module reference).
@@ -68,12 +73,14 @@ class SiameseUNet(nn.Module):
         # Bottleneck operates on concatenated difference features.
         self.bottleneck = _conv_block(base_ch * 4, base_ch * 4)
 
-        # Decoder
+        # Decoder with optional dropout after each block.
         self.up2 = nn.ConvTranspose2d(base_ch * 4, base_ch * 2, 2, stride=2)
         self.dec2 = _conv_block(base_ch * 4, base_ch * 2)  # + skip diff
+        self.drop2 = nn.Dropout2d(dropout) if dropout > 0 else nn.Identity()
 
         self.up1 = nn.ConvTranspose2d(base_ch * 2, base_ch, 2, stride=2)
         self.dec1 = _conv_block(base_ch * 2, base_ch)      # + skip diff
+        self.drop1 = nn.Dropout2d(dropout) if dropout > 0 else nn.Identity()
 
         self.head = nn.Conv2d(base_ch, 1, 1)
 
@@ -97,9 +104,9 @@ class SiameseUNet(nn.Module):
         b = self.bottleneck(diff3)
 
         # up2: 1/4 → 1/2, concat with diff2 (also 1/2)
-        d2 = self.dec2(torch.cat([self.up2(b), diff2], dim=1))
+        d2 = self.drop2(self.dec2(torch.cat([self.up2(b), diff2], dim=1)))
         # up1: 1/2 → 1/1, concat with diff1 (also 1/1)
-        d1 = self.dec1(torch.cat([self.up1(d2), diff1], dim=1))
+        d1 = self.drop1(self.dec1(torch.cat([self.up1(d2), diff1], dim=1)))
 
         return self.head(d1)
 
@@ -149,6 +156,17 @@ class ChangeDetector:
     @property
     def checkpoint_loaded(self) -> bool:
         return self._loaded
+
+    def predict_mask(self, t1_path: str | Path, t2_path: str | Path) -> np.ndarray:
+        """Return raw change probability map (H, W) with values in [0, 1].
+
+        Same preprocessing as detect() but returns the sigmoid output before
+        thresholding. Useful for threshold tuning and evaluation.
+        """
+        t1_arr, t2_arr, cloud_mask = prepare_pair(t1_path, t2_path)
+        prob_map = self._predict(t1_arr, t2_arr)
+        prob_map[cloud_mask] = 0.0
+        return prob_map
 
     def detect(
         self,
