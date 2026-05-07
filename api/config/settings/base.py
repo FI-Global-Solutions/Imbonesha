@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "imagery",
     "detections",
     "flags",
+    "notifications",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -150,6 +151,14 @@ SIMPLE_JWT = {
 
 # The default TokenObtainPairView uses USERNAME_FIELD automatically
 # (accounts.User.USERNAME_FIELD = "email"), so no custom serializer needed.
+
+# Notifications
+NOTIFICATION_BACKEND = env.str("NOTIFICATION_BACKEND", default="console")
+SENDGRID_API_KEY = env.str("SENDGRID_API_KEY", default="")
+NOTIFICATION_FROM_EMAIL = env.str(
+    "NOTIFICATION_FROM_EMAIL", default="notifications@imbonesha.gov.rw"
+)
+FRONTEND_URL = env.str("FRONTEND_URL", default="http://localhost:3000")
 
 # MinIO / S3
 MINIO_ENDPOINT = env.str("MINIO_ENDPOINT", default="minio:9000")

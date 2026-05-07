@@ -1,0 +1,21 @@
+IMBONESHA — Inspection Complete
+
+{{ inspector.get_full_name|default:inspector.email }} has submitted an inspection verdict.
+
+Verdict:       {{ verdict }}
+Parcel:        {{ parcel.upi }}
+Owner:         {{ parcel.owner_name }}
+Location:      {% if parcel.sector %}{{ parcel.sector }}, {% endif %}{{ parcel.district }}
+Inspector:     {{ inspector.get_full_name|default:inspector.email }}
+Visited at:    {{ inspection.visited_at|date:"N j, Y" }}
+{% if inspection.notes %}
+Notes:
+{{ inspection.notes|truncatechars:300 }}
+{% endif %}
+
+View the flag:
+{{ dashboard_url }}
+
+—
+Imbonesha · Rwanda Housing Authority Change Detection System
+This is an automated notification. Do not reply to this email.

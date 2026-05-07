@@ -16,6 +16,7 @@ python-dateutil==2.9.0
 pydantic==2.9.2
 shapely==2.0.6
 reportlab==4.2.5
+sendgrid==6.11.0
 pytest==8.3.3
 pytest-django==4.9.0
 ruff==0.6.9
