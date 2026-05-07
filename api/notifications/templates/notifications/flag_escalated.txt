@@ -1,0 +1,13 @@
+IMBONESHA — Flag Escalated
+
+A critical flag has been escalated and requires immediate attention.
+
+Parcel:    {{ parcel.upi }}
+District:  {{ parcel.district }}
+
+View the flag:
+{{ dashboard_url }}
+
+—
+Imbonesha · Rwanda Housing Authority Change Detection System
+This is an automated notification. Do not reply to this email.

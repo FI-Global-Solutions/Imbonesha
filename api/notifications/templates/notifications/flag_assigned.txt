@@ -1,0 +1,16 @@
+IMBONESHA — New Assignment
+
+You have been assigned a new flag for inspection by {{ assigned_by.get_full_name|default:assigned_by.email }}.
+
+Severity:      {{ severity }}
+Parcel:        {{ parcel.upi }}
+Owner:         {{ parcel.owner_name }}
+Location:      {% if parcel.sector %}{{ parcel.sector }}, {% endif %}{{ parcel.district }}
+Permit status: {% if parcel.has_active_permit %}Active{% else %}No active permit{% endif %}
+
+View your assignments:
+{{ dashboard_url }}
+
+—
+Imbonesha · Rwanda Housing Authority Change Detection System
+This is an automated notification. Do not reply to this email.

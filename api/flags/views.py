@@ -23,6 +23,7 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from accounts.models import User, UserRole
+from notifications.services import NotificationService
 from .filters import FlagFilter
 from .models import AuditLog, Flag, Inspection, InspectionVerdict, Report
 from .serializers import FlagDetailSerializer, FlagListSerializer, ReportSerializer
@@ -346,6 +347,7 @@ class FlagViewSet(
             after={"status": "assigned", "assigned_to": inspector.email},
             message=f"Assigned to {inspector.get_full_name() or inspector.email} by {request.user.email}",
         )
+        NotificationService.notify_flag_assigned(flag, inspector, request.user)
         return Response(FlagDetailSerializer(flag, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="unassign")
@@ -425,6 +427,7 @@ class FlagViewSet(
                 after={"status": "assigned", "assigned_to": inspector.email},
                 message=f"Bulk assigned to {inspector.get_full_name() or inspector.email} by {request.user.email}",
             )
+            NotificationService.notify_flag_assigned(flag, inspector, request.user)
             assigned += 1
 
         return Response({"assigned": assigned, "skipped": skipped, "errors": errors})
@@ -489,6 +492,7 @@ class FlagViewSet(
             after={"status": new_status, "verdict": verdict},
             message=f"Inspection submitted by {user.get_full_name() or user.email}: {InspectionVerdict(verdict).label}",
         )
+        NotificationService.notify_inspection_complete(flag, inspection)
 
         flag.refresh_from_db()
         return Response(FlagDetailSerializer(flag, context={"request": request}).data, status=status.HTTP_201_CREATED)
