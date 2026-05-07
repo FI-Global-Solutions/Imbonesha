@@ -65,6 +65,10 @@ services:
       DJANGO_DEBUG: "true"
       SHARED_IMAGERY_DIR: /shared/imagery
       MINIO_PUBLIC_ENDPOINT: http://localhost:9007
+      NOTIFICATION_BACKEND: "${NOTIFICATION_BACKEND:-console}"
+      SENDGRID_API_KEY: "${SENDGRID_API_KEY:-}"
+      NOTIFICATION_FROM_EMAIL: "${NOTIFICATION_FROM_EMAIL:-notifications@imbonesha.gov.rw}"
+      FRONTEND_URL: "${FRONTEND_URL:-http://localhost:3000}"
     volumes:
       - ../api:/app
       - shared_imagery:/shared/imagery
@@ -92,6 +96,10 @@ services:
       MINIO_SECRET_KEY: imbonesha_dev
       DJANGO_SECRET_KEY: dev-secret-not-for-production
       SHARED_IMAGERY_DIR: /shared/imagery
+      NOTIFICATION_BACKEND: "${NOTIFICATION_BACKEND:-console}"
+      SENDGRID_API_KEY: "${SENDGRID_API_KEY:-}"
+      NOTIFICATION_FROM_EMAIL: "${NOTIFICATION_FROM_EMAIL:-notifications@imbonesha.gov.rw}"
+      FRONTEND_URL: "${FRONTEND_URL:-http://localhost:3000}"
     volumes:
       - ../api:/app
       - shared_imagery:/shared/imagery
