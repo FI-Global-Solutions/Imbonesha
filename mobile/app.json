@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "Imbonesha",
+    "slug": "imbonesha-inspector",
+    "scheme": "imbonesha",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Imbonesha needs your location to verify photos are taken at the flagged site.",
+        "NSCameraUsageDescription": "Imbonesha needs camera access to photograph construction sites.",
+        "NSPhotoLibraryUsageDescription": "Imbonesha needs photo library access to select site photos."
+      },
+      "bundleIdentifier": "com.anonymous.imbonesha-inspector"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-location",
+      "expo-camera",
+      "expo-image-picker"
+    ]
+  }
+}

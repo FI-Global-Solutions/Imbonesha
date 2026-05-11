@@ -1,0 +1,108 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import client from './client';
+import type {
+  FlagDetail, FlagListItem, InspectionPhoto,
+  PaginatedResponse, SubmitInspectionPayload, UploadPhotoPayload, User,
+} from './types';
+import * as ImageManipulator from 'expo-image-manipulator';
+
+const STALE = 30_000;
+
+export function useProfile() {
+  return useQuery<User>({
+    queryKey: ['me'],
+    queryFn: async () => (await client.get('/me/')).data,
+    staleTime: STALE,
+    retry: 2,
+  });
+}
+
+export function useMyAssignments() {
+  return useQuery<PaginatedResponse<FlagListItem>>({
+    queryKey: ['flags', 'assigned'],
+    queryFn: async () => (await client.get('/flags/', { params: { status: 'assigned', page_size: 100 } })).data,
+    staleTime: STALE,
+    retry: 2,
+  });
+}
+
+export function useCompletedInspections() {
+  return useQuery<PaginatedResponse<FlagListItem>>({
+    queryKey: ['flags', 'completed'],
+    queryFn: async () =>
+      (await client.get('/flags/', {
+        params: { status__in: 'confirmed,dismissed,monitoring,inaccessible,data_error', page_size: 100 },
+      })).data,
+    staleTime: STALE,
+    retry: 2,
+  });
+}
+
+export function useFlag(id: number) {
+  return useQuery<FlagDetail>({
+    queryKey: ['flag', id],
+    queryFn: async () => (await client.get(`/flags/${id}/`)).data,
+    staleTime: STALE,
+    retry: 2,
+    enabled: !!id,
+  });
+}
+
+export function useFlagPhotos(id: number) {
+  return useQuery<InspectionPhoto[]>({
+    queryKey: ['flag', id, 'photos'],
+    queryFn: async () => (await client.get(`/flags/${id}/photos/`)).data,
+    staleTime: STALE,
+    retry: 2,
+    enabled: !!id,
+  });
+}
+
+export function useSubmitInspection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ flagId, payload }: { flagId: number; payload: SubmitInspectionPayload }) => {
+      const res = await client.post(`/flags/${flagId}/inspect/`, payload);
+      return res.data;
+    },
+    onSuccess: (_data, { flagId }) => {
+      qc.invalidateQueries({ queryKey: ['flags'] });
+      qc.invalidateQueries({ queryKey: ['flag', flagId] });
+    },
+  });
+}
+
+export function useUploadPhoto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: UploadPhotoPayload): Promise<InspectionPhoto> => {
+      // Resize to max 1920px client-side before upload.
+      const manipulated = await ImageManipulator.manipulateAsync(
+        params.uri,
+        [{ resize: { width: 1920 } }],
+        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
+      );
+
+      const formData = new FormData();
+      formData.append('photo', {
+        uri: manipulated.uri,
+        type: 'image/jpeg',
+        name: `photo_${Date.now()}.jpg`,
+      } as unknown as Blob);
+      formData.append('latitude', String(params.latitude));
+      formData.append('longitude', String(params.longitude));
+      if (params.accuracy != null) formData.append('accuracy_meters', String(params.accuracy));
+      formData.append('captured_at', params.capturedAt);
+      formData.append('caption', params.caption ?? '');
+
+      const res = await client.post(`/flags/${params.flagId}/photos/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.data;
+    },
+    onSuccess: (_data, { flagId }) => {
+      qc.invalidateQueries({ queryKey: ['flag', flagId, 'photos'] });
+      qc.invalidateQueries({ queryKey: ['flag', flagId] });
+    },
+  });
+}
