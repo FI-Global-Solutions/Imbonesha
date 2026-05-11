@@ -25,8 +25,8 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from accounts.models import User, UserRole
 from notifications.services import NotificationService
 from .filters import FlagFilter
-from .models import AuditLog, Flag, Inspection, InspectionVerdict, Report
-from .serializers import FlagDetailSerializer, FlagListSerializer, ReportSerializer
+from .models import AuditLog, Flag, Inspection, InspectionPhoto, InspectionVerdict, Report, haversine_meters
+from .serializers import FlagDetailSerializer, FlagListSerializer, InspectionPhotoSerializer, ReportSerializer
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
@@ -457,6 +457,30 @@ class FlagViewSet(
         if not visited_at:
             return Response({"detail": "visited_at is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # GPS enforcement: at least one photo required, closest must be within 500m.
+        photo_ids = request.data.get("photo_ids") or []
+        if not photo_ids:
+            return Response(
+                {"error": "At least one site photo is required to submit an inspection."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        photos = InspectionPhoto.objects.filter(id__in=photo_ids, flag=flag)
+        if not photos.exists():
+            return Response(
+                {"error": "Provided photos not found for this flag."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        closest = photos.order_by("distance_from_site_m").first()
+        if closest.distance_from_site_m is not None and closest.distance_from_site_m > 500:
+            return Response(
+                {
+                    "error": "No photos taken within 500m of the flagged site.",
+                    "closest_photo_distance_m": closest.distance_from_site_m,
+                    "message": "Photos must be taken at or near the construction site.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         inspection = Inspection.objects.create(
             flag=flag,
             inspector=user,
@@ -467,6 +491,17 @@ class FlagViewSet(
             occupancy_observed=bool(request.data.get("occupancy_observed", False)),
             visited_at=visited_at,
         )
+        # Link uploaded photos to this inspection record.
+        photos.update(inspection=inspection)
+
+        # Warn in audit log if closest photo is between 200-500m.
+        if closest.distance_from_site_m is not None and closest.distance_from_site_m > 200:
+            AuditLog.objects.create(
+                flag=flag,
+                actor=user,
+                event="gps_distance_warning",
+                message=f"Inspection submitted with closest photo {closest.distance_from_site_m:.0f}m from site.",
+            )
 
         # Map verdict directly to flag status (immediate transition, no in_review gate).
         verdict_to_status = {
@@ -496,6 +531,102 @@ class FlagViewSet(
 
         flag.refresh_from_db()
         return Response(FlagDetailSerializer(flag, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get", "post"], url_path="photos")
+    def photos(self, request: Request, pk=None) -> Response:
+        flag = self.get_object()
+        user = request.user
+
+        if request.method == "GET":
+            qs = InspectionPhoto.objects.filter(flag=flag)
+            return Response(InspectionPhotoSerializer(qs, many=True).data)
+
+        # POST — upload a new photo
+        if user.role == UserRole.INSPECTOR and flag.assigned_to != user:
+            return Response({"detail": "You can only upload photos for flags assigned to you."}, status=status.HTTP_403_FORBIDDEN)
+
+        photo_file = request.FILES.get("photo")
+        if not photo_file:
+            return Response({"detail": "photo file is required."}, status=status.HTTP_400_BAD_REQUEST)
+        for field in ("latitude", "longitude", "captured_at"):
+            if not request.data.get(field):
+                return Response({"detail": f"{field} is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            lat = float(request.data["latitude"])
+            lng = float(request.data["longitude"])
+        except (ValueError, TypeError):
+            return Response({"detail": "latitude and longitude must be numeric."}, status=status.HTTP_400_BAD_REQUEST)
+
+        accuracy = request.data.get("accuracy_meters")
+        try:
+            accuracy = float(accuracy) if accuracy else None
+        except (ValueError, TypeError):
+            accuracy = None
+
+        # Resize to max 1920px on longest side using Pillow.
+        try:
+            from PIL import Image as PILImage
+            import io as _io
+            img = PILImage.open(photo_file)
+            img = img.convert("RGB")
+            max_dim = 1920
+            if max(img.width, img.height) > max_dim:
+                ratio = max_dim / max(img.width, img.height)
+                img = img.resize((int(img.width * ratio), int(img.height * ratio)), PILImage.LANCZOS)
+            buf = _io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            buf.seek(0)
+            img_bytes = buf.read()
+        except Exception as exc:
+            logger.error("Image resize failed: %s", exc)
+            return Response({"detail": "Invalid image file."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Compute distance from detection centroid using Haversine.
+        distance = None
+        try:
+            centroid = flag.detection.footprint.centroid
+            if centroid:
+                distance = haversine_meters(lat, lng, centroid.y, centroid.x)
+        except Exception:
+            pass
+
+        # Store in MinIO under inspection-photos/{flag_id}/{photo_id}.jpg
+        import uuid as _uuid
+        photo_id = _uuid.uuid4()
+        object_key = f"inspection-photos/{flag.id}/{photo_id}.jpg"
+        try:
+            from minio import Minio
+            minio_client = Minio(
+                settings.MINIO_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                secure=getattr(settings, "MINIO_SECURE", False),
+            )
+            bucket = getattr(settings, "MINIO_BUCKET", "imbonesha-imagery")
+            minio_client.put_object(
+                bucket, object_key,
+                _io.BytesIO(img_bytes), len(img_bytes),
+                content_type="image/jpeg",
+            )
+        except Exception as exc:
+            logger.exception("MinIO upload failed for photo %s: %s", photo_id, exc)
+            return Response({"detail": "Photo storage failed. Try again."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        photo = InspectionPhoto.objects.create(
+            id=photo_id,
+            flag=flag,
+            uploaded_by=user,
+            object_key=object_key,
+            caption=request.data.get("caption", ""),
+            latitude=lat,
+            longitude=lng,
+            accuracy_meters=accuracy,
+            captured_at=request.data["captured_at"],
+            distance_from_site_m=distance,
+        )
+
+        return Response(InspectionPhotoSerializer(photo).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="export.csv", url_name="export_csv",
             permission_classes=[AllowAny])
