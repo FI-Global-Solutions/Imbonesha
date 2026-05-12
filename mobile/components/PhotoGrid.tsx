@@ -1,132 +1,201 @@
 import React from 'react';
 import {
-  ActivityIndicator, Alert, Image, StyleSheet, Text, TouchableOpacity, View,
+  ActionSheetIOS, ActivityIndicator, Alert, Image, Platform,
+  StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { colors, radius, spacing } from '../lib/theme';
+import { useTheme, radius, spacing } from '../lib/theme';
 import { getCurrentPosition, gpsStatusColor } from '../lib/location';
-import type { InspectionPhoto, UploadPhotoPayload } from '../lib/api/types';
+import type { UploadPhotoPayload } from '../lib/api/types';
+
+export interface LocalPhoto {
+  localId: string;       // temp key before server responds
+  uri: string;           // local file URI — always displayable
+  serverId: string | null; // UUID returned by server after upload
+  uploading: boolean;
+  failed: boolean;
+}
 
 interface Props {
+  photos: LocalPhoto[];
+  onUpload: (payload: UploadPhotoPayload, localId: string) => void;
+  onDelete: (localId: string) => void;
+  onPhotoPress?: (uri: string) => void;
   flagId: number;
-  photos: InspectionPhoto[];
-  uploading: boolean;
-  onUpload: (payload: UploadPhotoPayload) => void;
 }
 
 function DistanceBadge({ distanceM }: { distanceM: number | null }) {
   if (distanceM === null) return null;
   const status = gpsStatusColor(distanceM, null);
-  const color = colors.gps[status];
+  const colorMap: Record<string, string> = { good: '#16a34a', warning: '#f59e0b', poor: '#dc2626' };
   return (
-    <View style={[styles.badge, { backgroundColor: color }]}>
+    <View style={[styles.badge, { backgroundColor: colorMap[status] }]}>
       <Text style={styles.badgeText}>{Math.round(distanceM)}m</Text>
     </View>
   );
 }
 
-export default function PhotoGrid({ flagId, photos, uploading, onUpload }: Props) {
-  async function capturePhoto() {
-    let pos;
-    try {
-      pos = await getCurrentPosition();
-    } catch {
-      Alert.alert('GPS Error', 'Could not get your location. Enable GPS and try again.');
-      return;
-    }
+export default function PhotoGrid({ photos, onUpload, onDelete, onPhotoPress, flagId }: Props) {
+  const c = useTheme();
+  const isUploading = photos.some((p) => p.uploading);
 
-    if (pos.coords.accuracy != null && pos.coords.accuracy > 50) {
-      await new Promise<void>((resolve) =>
-        Alert.alert(
-          'Weak GPS Signal',
-          `GPS accuracy is ±${Math.round(pos.coords.accuracy!)}m. Move to an open area for accurate location recording.`,
-          [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve() },
-            { text: 'Continue Anyway', onPress: () => resolve() },
-          ],
-        ),
-      );
-    }
+  async function getPosition() {
+    try { return await getCurrentPosition(); } catch { return null; }
+  }
 
+  async function captureAndUpload(launchFn: () => Promise<ImagePicker.ImagePickerResult>) {
+    const pos = await getPosition();
+    const result = await launchFn();
+    if (result.canceled || !result.assets[0]) return;
+    const localId = `local_${Date.now()}_${Math.random()}`;
+    onUpload(
+      {
+        flagId,
+        uri: result.assets[0].uri,
+        latitude: pos?.coords.latitude ?? 0,
+        longitude: pos?.coords.longitude ?? 0,
+        accuracy: pos?.coords.accuracy ?? null,
+        capturedAt: new Date().toISOString(),
+      },
+      localId,
+    );
+  }
+
+  async function launchCamera() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Camera Permission Required', 'Please allow camera access in Settings to take site photos.');
       return;
     }
+    await captureAndUpload(() =>
+      ImagePicker.launchCameraAsync({ quality: 0.85, allowsEditing: false, exif: false }),
+    );
+  }
 
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.85,
-      allowsEditing: false,
-      exif: false,
-    });
+  async function launchGallery() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Gallery Permission Required', 'Please allow photo library access in Settings.');
+      return;
+    }
+    await captureAndUpload(() =>
+      ImagePicker.launchImageLibraryAsync({ quality: 0.85, allowsEditing: false, exif: false }),
+    );
+  }
 
-    if (!result.canceled && result.assets[0]) {
-      onUpload({
-        flagId,
-        uri: result.assets[0].uri,
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-        accuracy: pos.coords.accuracy,
-        capturedAt: new Date().toISOString(),
-      });
+  function handleAddPhoto() {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Cancel', 'Take photo with camera', 'Choose from gallery'], cancelButtonIndex: 0 },
+        (idx) => {
+          if (idx === 1) launchCamera();
+          if (idx === 2) launchGallery();
+        },
+      );
+    } else {
+      Alert.alert('Add Photo', '', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Take photo', onPress: launchCamera },
+        { text: 'Choose from gallery', onPress: launchGallery },
+      ]);
     }
   }
 
   return (
     <View>
-      <View style={styles.grid}>
-        {photos.map((photo) => (
-          <View key={photo.id} style={styles.photoCell}>
-            {photo.url ? (
-              <Image source={{ uri: photo.url }} style={styles.thumb} resizeMode="cover" />
-            ) : (
-              <View style={[styles.thumb, styles.placeholder]} />
-            )}
-            <DistanceBadge distanceM={photo.distance_from_site_m} />
-          </View>
-        ))}
-        {uploading && (
-          <View style={[styles.photoCell, styles.uploadingCell]}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.uploadingText}>Uploading…</Text>
-          </View>
-        )}
-      </View>
-      <TouchableOpacity style={styles.takeBtn} onPress={capturePhoto} activeOpacity={0.8}>
-        <Text style={styles.takeBtnText}>📷  Take Photo</Text>
+      {photos.length > 0 && (
+        <View style={styles.grid}>
+          {photos.map((photo) => (
+            <View key={photo.localId} style={styles.photoCell}>
+              {/* Always show local uri — reliable on device/simulator */}
+              <TouchableOpacity
+                style={StyleSheet.absoluteFill}
+                onPress={() => !photo.uploading && onPhotoPress?.(photo.uri)}
+                activeOpacity={0.85}
+                disabled={photo.uploading}
+              >
+                <Image source={{ uri: photo.uri }} style={styles.thumb} resizeMode="cover" />
+              </TouchableOpacity>
+
+              {/* Upload spinner overlay */}
+              {photo.uploading && (
+                <View style={styles.uploadOverlay}>
+                  <ActivityIndicator color="#fff" size="small" />
+                </View>
+              )}
+
+              {/* Failed indicator */}
+              {photo.failed && (
+                <View style={styles.failedOverlay}>
+                  <Text style={styles.failedText}>!</Text>
+                </View>
+              )}
+
+              {/* Delete button — top-right × */}
+              {!photo.uploading && (
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={() => onDelete(photo.localId)}
+                  hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
+                >
+                  <Text style={styles.deleteBtnText}>×</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+
+      <TouchableOpacity
+        style={[styles.addBtn, { borderColor: c.primary }, isUploading && { opacity: 0.5 }]}
+        onPress={handleAddPhoto}
+        activeOpacity={0.8}
+        disabled={isUploading}
+      >
+        {isUploading
+          ? <ActivityIndicator color={c.primary} />
+          : <Text style={[styles.addBtnText, { color: c.primary }]}>+  Add photo</Text>}
       </TouchableOpacity>
     </View>
   );
 }
 
-const CELL = 160;
+const CELL = 100;
 
 const styles = StyleSheet.create({
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
-  photoCell: { width: CELL, height: CELL, borderRadius: radius.md, overflow: 'hidden', position: 'relative' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
+  photoCell: {
+    width: CELL, height: CELL,
+    borderRadius: radius.md, overflow: 'hidden',
+    position: 'relative',
+  },
   thumb: { width: '100%', height: '100%' },
-  placeholder: { backgroundColor: colors.border },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  failedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(220,38,38,0.55)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  failedText: { color: '#fff', fontSize: 22, fontWeight: '900' },
+  deleteBtn: {
+    position: 'absolute', top: 4, right: 4,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  deleteBtnText: { color: '#fff', fontSize: 16, lineHeight: 20, fontWeight: '700' },
   badge: {
-    position: 'absolute', bottom: 6, right: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-    borderRadius: 4,
+    position: 'absolute', bottom: 4, left: 4,
+    paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4,
   },
-  badgeText: { fontSize: 11, color: '#fff', fontWeight: '700' },
-  uploadingCell: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
+  badgeText: { fontSize: 10, color: '#fff', fontWeight: '700' },
+  addBtn: {
+    height: 48, borderRadius: radius.md, borderWidth: 1.5,
+    justifyContent: 'center', alignItems: 'center', marginTop: spacing.sm,
   },
-  uploadingText: { fontSize: 12, color: colors.muted },
-  takeBtn: {
-    backgroundColor: colors.primary,
-    height: 52,
-    borderRadius: radius.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  takeBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  addBtnText: { fontSize: 15, fontWeight: '600' },
 });

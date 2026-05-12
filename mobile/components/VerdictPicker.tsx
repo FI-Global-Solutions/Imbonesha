@@ -1,14 +1,15 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, radius, spacing } from '../lib/theme';
+import * as Haptics from 'expo-haptics';
+import { useTheme, radius, spacing } from '../lib/theme';
 import type { InspectionVerdict } from '../lib/api/types';
 
-const VERDICTS: { value: InspectionVerdict; label: string; color: string }[] = [
-  { value: 'confirmed', label: 'Confirmed Unauthorized', color: colors.severity.critical },
-  { value: 'dismissed', label: 'Dismissed — False Positive', color: colors.muted },
-  { value: 'monitoring', label: 'Under Monitoring', color: colors.severity.medium },
-  { value: 'inaccessible', label: 'Site Inaccessible', color: colors.severity.high },
-  { value: 'data_error', label: 'Data Error — Wrong Location', color: colors.muted },
+const VERDICTS: { value: InspectionVerdict; label: string; colorKey: string }[] = [
+  { value: 'confirmed', label: 'Confirmed Unauthorized', colorKey: 'critical' },
+  { value: 'dismissed', label: 'Dismissed — False Positive', colorKey: 'muted' },
+  { value: 'monitoring', label: 'Under Monitoring', colorKey: 'medium' },
+  { value: 'inaccessible', label: 'Site Inaccessible', colorKey: 'high' },
+  { value: 'data_error', label: 'Data Error — Wrong Location', colorKey: 'muted' },
 ];
 
 interface Props {
@@ -17,24 +18,40 @@ interface Props {
 }
 
 export default function VerdictPicker({ selected, onChange }: Props) {
+  const c = useTheme();
+
+  function resolveColor(key: string): string {
+    if (key === 'muted') return c.muted;
+    return c.severity[key as keyof typeof c.severity] ?? c.muted;
+  }
+
+  async function handleSelect(v: InspectionVerdict) {
+    onChange(v);
+    await Haptics.selectionAsync();
+  }
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { borderColor: c.border, backgroundColor: c.surface }]}>
       {VERDICTS.map((v, i) => {
         const isSelected = selected === v.value;
+        const color = resolveColor(v.colorKey);
         return (
           <TouchableOpacity
             key={v.value}
             style={[
               styles.row,
-              i < VERDICTS.length - 1 && styles.borderBottom,
-              isSelected && { backgroundColor: v.color + '10' },
+              { backgroundColor: c.surface },
+              i < VERDICTS.length - 1 && [styles.borderBottom, { borderBottomColor: c.border }],
+              isSelected && { backgroundColor: color + '0D' },
             ]}
-            onPress={() => onChange(v.value)}
-            activeOpacity={0.7}
+            onPress={() => handleSelect(v.value)}
+            activeOpacity={0.75}
           >
-            <View style={[styles.leftBar, { backgroundColor: isSelected ? v.color : 'transparent' }]} />
-            <Text style={styles.radio}>{isSelected ? '●' : '○'}</Text>
-            <Text style={[styles.label, isSelected && { color: v.color, fontWeight: '700' }]}>
+            {isSelected && <View style={[styles.leftBar, { backgroundColor: color }]} />}
+            <Text style={[styles.radio, { color: isSelected ? color : c.muted }]}>
+              {isSelected ? '●' : '○'}
+            </Text>
+            <Text style={[styles.label, { color: isSelected ? color : c.foreground }, isSelected && styles.labelSelected]}>
               {v.label}
             </Text>
           </TouchableOpacity>
@@ -47,18 +64,18 @@ export default function VerdictPicker({ selected, onChange }: Props) {
 const styles = StyleSheet.create({
   container: {
     borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: radius.md,
     overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.background,
+    height: 52,
+    paddingHorizontal: spacing.md,
   },
-  borderBottom: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  leftBar: { width: 3, height: '100%', position: 'absolute', left: 0 },
-  radio: { fontSize: 16, marginRight: 10, color: colors.muted },
-  label: { fontSize: 15, color: colors.foreground, flex: 1 },
+  borderBottom: { borderBottomWidth: 1 },
+  leftBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
+  radio: { fontSize: 15, marginRight: 10 },
+  label: { fontSize: 15, flex: 1 },
+  labelSelected: { fontWeight: '700' },
 });

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import client from './client';
 import type {
-  FlagDetail, FlagListItem, InspectionPhoto,
+  FlagDetail, FlagImagery, FlagListItem, InspectionPhoto,
   PaginatedResponse, SubmitInspectionPayload, UploadPhotoPayload, User,
 } from './types';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -44,6 +44,16 @@ export function useFlag(id: number) {
     queryFn: async () => (await client.get(`/flags/${id}/`)).data,
     staleTime: STALE,
     retry: 2,
+    enabled: !!id,
+  });
+}
+
+export function useFlagImagery(id: number) {
+  return useQuery<FlagImagery>({
+    queryKey: ['flag', id, 'imagery'],
+    queryFn: async () => (await client.get(`/flags/${id}/imagery/`)).data,
+    staleTime: 60 * 60 * 1000, // imagery doesn't change
+    retry: 1,
     enabled: !!id,
   });
 }

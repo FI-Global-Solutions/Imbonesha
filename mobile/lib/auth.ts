@@ -1,35 +1,35 @@
 import * as SecureStore from 'expo-secure-store';
-import client from './api/client';
+import { create } from 'zustand';
 
-const ACCESS_KEY = 'access_token';
-const REFRESH_KEY = 'refresh_token';
-
-export async function login(email: string, password: string): Promise<void> {
-  const res = await client.post('/auth/login/', { email, password });
-  await SecureStore.setItemAsync(ACCESS_KEY, res.data.access);
-  await SecureStore.setItemAsync(REFRESH_KEY, res.data.refresh);
+interface AuthState {
+  accessToken: string | null;
+  refreshToken: string | null;
+  isLoaded: boolean;
+  setTokens: (access: string, refresh: string) => Promise<void>;
+  clearTokens: () => Promise<void>;
+  loadTokens: () => Promise<void>;
 }
 
-export async function logout(): Promise<void> {
-  await SecureStore.deleteItemAsync(ACCESS_KEY);
-  await SecureStore.deleteItemAsync(REFRESH_KEY);
-}
+export const useAuthStore = create<AuthState>((set) => ({
+  accessToken: null,
+  refreshToken: null,
+  isLoaded: false,
 
-export async function getAccessToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(ACCESS_KEY);
-}
+  loadTokens: async () => {
+    const access = await SecureStore.getItemAsync('access_token');
+    const refresh = await SecureStore.getItemAsync('refresh_token');
+    set({ accessToken: access, refreshToken: refresh, isLoaded: true });
+  },
 
-export async function getRefreshToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(REFRESH_KEY);
-}
+  setTokens: async (access, refresh) => {
+    await SecureStore.setItemAsync('access_token', access);
+    await SecureStore.setItemAsync('refresh_token', refresh);
+    set({ accessToken: access, refreshToken: refresh });
+  },
 
-export async function isAuthenticated(): Promise<boolean> {
-  const token = await getAccessToken();
-  if (!token) return false;
-  try {
-    await client.get('/me/');
-    return true;
-  } catch {
-    return false;
-  }
-}
+  clearTokens: async () => {
+    await SecureStore.deleteItemAsync('access_token');
+    await SecureStore.deleteItemAsync('refresh_token');
+    set({ accessToken: null, refreshToken: null });
+  },
+}));

@@ -1,21 +1,29 @@
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
+import { createNavigationContainerRef } from '@react-navigation/native';
 
-// On simulator/device via Expo Go, hostUri is the dev machine IP:port.
-// Split off the port to get just the IP, then use port 8007 (API port).
-const devHost = Constants.expoConfig?.hostUri?.split(':')[0] ?? 'localhost';
-const API_URL = __DEV__
-  ? `http://${devHost}:8007`
-  : 'https://api.imbonesha.gov.rw';
+function getApiBase(): string {
+  if (__DEV__) {
+    const host = Constants.expoConfig?.hostUri?.split(':')[0] ?? 'localhost';
+    return `http://${host}:8007/api/v1`;
+  }
+  return 'https://api.imbonesha.gov.rw/api/v1';
+}
+
+export const API_BASE = getApiBase();
+
+// Navigation ref so interceptor can navigate to login without being in a component.
+export const navigationRef = createNavigationContainerRef();
 
 const client = axios.create({
-  baseURL: `${API_URL}/api/v1`,
+  baseURL: API_BASE,
   timeout: 30000,
 });
 
-client.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('access_token');
+client.interceptors.request.use((config) => {
+  // Import here to avoid circular dep at module load time
+  const { useAuthStore } = require('../auth');
+  const token = useAuthStore.getState().accessToken;
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -23,17 +31,26 @@ client.interceptors.request.use(async (config) => {
 client.interceptors.response.use(
   (res) => res,
   async (error) => {
-    if (error.response?.status === 401) {
-      const refresh = await SecureStore.getItemAsync('refresh_token');
-      if (refresh) {
+    if (error.response?.status === 401 && !error.config._retry) {
+      error.config._retry = true;
+      const { useAuthStore } = require('../auth');
+      const { refreshToken, setTokens, clearTokens } = useAuthStore.getState();
+      if (refreshToken) {
         try {
-          const res = await axios.post(`${API_URL}/api/v1/auth/refresh/`, { refresh });
-          await SecureStore.setItemAsync('access_token', res.data.access);
+          const res = await axios.post(`${API_BASE}/auth/refresh/`, { refresh: refreshToken });
+          await setTokens(res.data.access, refreshToken);
           error.config.headers.Authorization = `Bearer ${res.data.access}`;
           return client(error.config);
         } catch {
-          await SecureStore.deleteItemAsync('access_token');
-          await SecureStore.deleteItemAsync('refresh_token');
+          await clearTokens();
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('login' as never);
+          }
+        }
+      } else {
+        await clearTokens();
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('login' as never);
         }
       }
     }

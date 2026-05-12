@@ -114,6 +114,13 @@ export interface SubmitInspectionPayload {
   photo_ids: string[];
 }
 
+export interface FlagImagery {
+  t1_url: string | null;
+  t2_url: string | null;
+  t1_captured_at: string | null;
+  t2_captured_at: string | null;
+}
+
 export interface UploadPhotoPayload {
   flagId: number;
   uri: string;

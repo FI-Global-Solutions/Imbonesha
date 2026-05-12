@@ -1,35 +1,26 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
-import { colors } from '../../lib/theme';
+import { StyleSheet, Text } from 'react-native';
+import { useTheme } from '../../lib/theme';
 import { useMyAssignments } from '../../lib/api/hooks';
 
-function AssignmentsIcon({ focused }: { focused: boolean }) {
-  return <Text style={{ fontSize: 20 }}>{focused ? '📋' : '📄'}</Text>;
-}
-function MapIcon({ focused }: { focused: boolean }) {
-  return <Text style={{ fontSize: 20 }}>{focused ? '🗺️' : '🗺️'}</Text>;
-}
-function ProfileIcon({ focused }: { focused: boolean }) {
-  return <Text style={{ fontSize: 20 }}>{focused ? '👤' : '👤'}</Text>;
-}
-
-function AssignmentsBadge() {
-  const { data } = useMyAssignments();
-  return data?.count && data.count > 0
-    ? <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{data.count}</Text>
-    : null;
+function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
+  return (
+    <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>
+  );
 }
 
 export default function TabsLayout() {
+  const c = useTheme();
   const { data } = useMyAssignments();
   const pendingCount = data?.count ?? 0;
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.border },
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.muted,
+        tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.border, borderTopWidth: 1, elevation: 0, shadowOpacity: 0 },
+        tabBarLabelStyle: styles.tabLabel,
         headerShown: false,
       }}
     >
@@ -37,24 +28,22 @@ export default function TabsLayout() {
         name="assignments"
         options={{
           title: 'Assignments',
-          tabBarIcon: ({ focused }) => <AssignmentsIcon focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,
           tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="map"
-        options={{
-          title: 'Map',
-          tabBarIcon: ({ focused }) => <MapIcon focused={focused} />,
+          tabBarBadgeStyle: { backgroundColor: c.primary, fontSize: 10 },
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ focused }) => <ProfileIcon focused={focused} />,
+          title: 'Me',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabLabel: { fontSize: 11, fontWeight: '600' },
+});
