@@ -265,7 +265,7 @@ class TestNotificationService:
         kwargs = mock_delay.call_args[1]
         assert kwargs["recipient_id"] == str(inspector_user.id)
         assert kwargs["notification_type"] == "flag_assigned"
-        assert kwargs["related_flag_id"] == str(flag.id)
+        assert kwargs["related_flag_id"] == flag.id
 
     def test_notify_flag_assigned_subject_contains_upi(self, db, flag, inspector_user, admin_user, parcel, settings):
         settings.FRONTEND_URL = "http://localhost:54112"
@@ -328,7 +328,7 @@ class TestSendNotificationTask:
                 body_text="Body",
                 body_html="<p>Body</p>",
                 notification_type="flag_assigned",
-                related_flag_id=str(uuid.uuid4()),
+                related_flag_id=None,
             )
 
         assert result["success"] is True
@@ -434,6 +434,15 @@ class TestAssignEndpointNotification:
         assert mock_notify.call_count == 2
 
     def test_inspect_endpoint_notifies_assigner(self, client, assigned_flag, inspector_user):
+        from flags.models import InspectionPhoto
+        photo = InspectionPhoto.objects.create(
+            flag=assigned_flag,
+            uploaded_by=inspector_user,
+            object_key=f"inspection-photos/{assigned_flag.id}/test.jpg",
+            latitude=-1.944,
+            longitude=30.089,
+            captured_at=timezone.now(),
+        )
         token = self._token(client, inspector_user.email)
         with patch("flags.views.NotificationService.notify_inspection_complete") as mock_notify:
             resp = client.post(
@@ -442,6 +451,7 @@ class TestAssignEndpointNotification:
                     "verdict": "confirmed",
                     "visited_at": timezone.now().isoformat(),
                     "notes": "Confirmed on site",
+                    "photo_ids": [str(photo.id)],
                 },
                 content_type="application/json",
                 HTTP_AUTHORIZATION=f"Bearer {token}",

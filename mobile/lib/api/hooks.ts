@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import client from './client';
 import type {
-  FlagDetail, FlagImagery, FlagListItem, InspectionPhoto,
-  PaginatedResponse, SubmitInspectionPayload, UploadPhotoPayload, User,
+  FlagDetail, FlagImagery, FlagListItem, InspectionPhoto, MobileNotification,
+  NotificationListResponse, PaginatedResponse, SubmitInspectionPayload,
+  UnreadCountResponse, UploadPhotoPayload, User,
 } from './types';
 import * as ImageManipulator from 'expo-image-manipulator';
 
@@ -78,6 +79,47 @@ export function useSubmitInspection() {
     onSuccess: (_data, { flagId }) => {
       qc.invalidateQueries({ queryKey: ['flags'] });
       qc.invalidateQueries({ queryKey: ['flag', flagId] });
+    },
+  });
+}
+
+export function useNotifications(unreadOnly = false) {
+  return useQuery<NotificationListResponse>({
+    queryKey: ['notifications', { unreadOnly }],
+    queryFn: async () =>
+      (await client.get('/notifications/', { params: unreadOnly ? { unread_only: 'true' } : {} })).data,
+    staleTime: STALE,
+    retry: 2,
+  });
+}
+
+export function useUnreadCount() {
+  return useQuery<UnreadCountResponse>({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: async () => (await client.get('/notifications/unread-count/')).data,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: 2,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string): Promise<MobileNotification> =>
+      (await client.patch(`/notifications/${id}/read/`)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+export function useMarkAllRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await client.post('/notifications/mark-all-read/')).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 }

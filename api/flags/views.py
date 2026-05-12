@@ -457,7 +457,7 @@ class FlagViewSet(
         if not visited_at:
             return Response({"detail": "visited_at is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # GPS enforcement: at least one photo required, closest must be within 500m.
+        # Require at least one photo — GPS distance does not block submission.
         photo_ids = request.data.get("photo_ids") or []
         if not photo_ids:
             return Response(
@@ -468,16 +468,6 @@ class FlagViewSet(
         if not photos.exists():
             return Response(
                 {"error": "Provided photos not found for this flag."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        closest = photos.order_by("distance_from_site_m").first()
-        if closest.distance_from_site_m is not None and closest.distance_from_site_m > 500:
-            return Response(
-                {
-                    "error": "No photos taken within 500m of the flagged site.",
-                    "closest_photo_distance_m": closest.distance_from_site_m,
-                    "message": "Photos must be taken at or near the construction site.",
-                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -493,15 +483,6 @@ class FlagViewSet(
         )
         # Link uploaded photos to this inspection record.
         photos.update(inspection=inspection)
-
-        # Warn in audit log if closest photo is between 200-500m.
-        if closest.distance_from_site_m is not None and closest.distance_from_site_m > 200:
-            AuditLog.objects.create(
-                flag=flag,
-                actor=user,
-                event="gps_distance_warning",
-                message=f"Inspection submitted with closest photo {closest.distance_from_site_m:.0f}m from site.",
-            )
 
         # Map verdict directly to flag status (immediate transition, no in_review gate).
         verdict_to_status = {

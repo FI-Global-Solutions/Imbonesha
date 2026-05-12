@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import { StyleSheet, Text } from 'react-native';
 import { useTheme } from '../../lib/theme';
-import { useMyAssignments } from '../../lib/api/hooks';
+import { useMyAssignments, useUnreadCount } from '../../lib/api/hooks';
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return (
@@ -11,8 +11,11 @@ function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
 
 export default function TabsLayout() {
   const c = useTheme();
-  const { data } = useMyAssignments();
-  const pendingCount = data?.count ?? 0;
+  const { data: assignmentsData } = useMyAssignments();
+  const { data: unreadData } = useUnreadCount();
+
+  const pendingCount = assignmentsData?.count ?? 0;
+  const unreadCount = unreadData?.count ?? 0;
 
   return (
     <Tabs
@@ -30,6 +33,15 @@ export default function TabsLayout() {
           title: 'Assignments',
           tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,
           tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: c.primary, fontSize: 10 },
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Notifications',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🔔" focused={focused} />,
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
           tabBarBadgeStyle: { backgroundColor: c.primary, fontSize: 10 },
         }}
       />

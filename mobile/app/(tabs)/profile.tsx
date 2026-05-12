@@ -16,7 +16,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import { useCompletedInspections, useMyAssignments, useProfile } from '../../lib/api/hooks';
+import { useCompletedInspections, useMyAssignments, useProfile, useUnreadCount } from '../../lib/api/hooks';
 import { useAuthStore } from '../../lib/auth';
 import { darkColors, lightColors, radius, spacing } from '../../lib/theme';
 import { useThemeStore } from '../../lib/themeStore';
@@ -92,6 +92,8 @@ export default function ProfileScreen() {
   const { data: user, isLoading } = useProfile();
   const { data: active } = useMyAssignments();
   const { data: completed } = useCompletedInspections();
+  const { data: unreadData } = useUnreadCount();
+  const unreadCount = unreadData?.count ?? 0;
   const { isDark, notificationsEnabled, loaded, load, toggleTheme, toggleNotifications } = useThemeStore();
   const c = isDark ? darkColors : lightColors;
 
@@ -229,6 +231,21 @@ export default function ProfileScreen() {
               disabled
             />
           </View>
+          {unreadCount > 0 && (
+            <>
+              <View style={[styles.divider, { backgroundColor: c.divider }]} />
+              <TouchableOpacity
+                style={styles.infoRow}
+                onPress={() => router.push('/(tabs)/notifications')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.infoLabel, { color: c.primary, fontWeight: '600' }]}>
+                  {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
+                </Text>
+                <Text style={[styles.drawerChevron, { color: c.primary }]}>›</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {/* Sign out */}

@@ -10,6 +10,12 @@ from accounts.views import MeView
 from detections.views import DetectionJobViewSet
 from flags.views import AnalyticsView, FlagViewSet, InspectorWorkloadView, ReportViewSet
 from imagery.views import AOIViewSet
+from notifications.views import (
+    NotificationListView,
+    NotificationMarkAllReadView,
+    NotificationMarkReadView,
+    NotificationUnreadCountView,
+)
 from parcels.views import ParcelViewSet
 
 
@@ -32,5 +38,9 @@ urlpatterns = [
     path("api/v1/me/", MeView.as_view(), name="me"),
     path("api/v1/analytics/summary/", AnalyticsView.as_view(), name="analytics-summary"),
     path("api/v1/inspectors/workload/", InspectorWorkloadView.as_view(), name="inspector-workload"),
+    path("api/v1/notifications/", NotificationListView.as_view(), name="notification-list"),
+    path("api/v1/notifications/unread-count/", NotificationUnreadCountView.as_view(), name="notification-unread-count"),
+    path("api/v1/notifications/mark-all-read/", NotificationMarkAllReadView.as_view(), name="notification-mark-all-read"),
+    path("api/v1/notifications/<str:pk>/read/", NotificationMarkReadView.as_view(), name="notification-mark-read"),
     path("api/v1/", include(router.urls)),
 ]

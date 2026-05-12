@@ -130,3 +130,23 @@ export interface UploadPhotoPayload {
   capturedAt: string;
   caption?: string;
 }
+
+export interface MobileNotification {
+  id: string;
+  title: string;
+  body: string;
+  notification_type: string;
+  related_flag_id: number | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  count: number;
+  results: MobileNotification[];
+}
+
+export interface UnreadCountResponse {
+  count: number;
+}
