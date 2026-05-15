@@ -1,6 +1,22 @@
 from django.contrib import admin
 
-from .models import NotificationLog
+from .models import MobileNotification, NotificationLog
+
+
+@admin.register(MobileNotification)
+class MobileNotificationAdmin(admin.ModelAdmin):
+    list_display = ["title", "recipient", "notification_type", "is_read", "created_at"]
+    list_filter = ["is_read", "notification_type"]
+    search_fields = ["recipient__email", "title", "body"]
+    readonly_fields = ["id", "recipient", "title", "body", "notification_type",
+                       "related_flag", "is_read", "read_at", "created_at"]
+    ordering = ["-created_at"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(NotificationLog)

@@ -19,7 +19,7 @@ from detections.models import Detection, DetectionJob
 from imagery.models import AOI, ImageScene
 from parcels.models import Parcel
 
-from .models import AuditLog, Flag, FlagStatus, Inspection, Severity
+from .models import AuditLog, Flag, FlagStatus, Inspection, InspectionPhoto, Severity
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +283,16 @@ class InspectEndpointTest(TestCase):
         self.inspector2 = make_user("insp2@test.rw", UserRole.INSPECTOR, district="Gasabo")
         self.flag = make_flag(assigned_to=self.inspector1, status=FlagStatus.ASSIGNED)
         self.client = APIClient()
+        # Create a photo near the site (centroid ~-1.9405, 30.0585) so GPS validation passes.
+        self.photo = InspectionPhoto.objects.create(
+            flag=self.flag,
+            uploaded_by=self.inspector1,
+            object_key=f"inspection-photos/{self.flag.id}/test.jpg",
+            latitude=-1.9406,
+            longitude=30.0586,
+            captured_at=timezone.now(),
+            distance_from_site_m=15.0,
+        )
         self.payload = {
             "verdict": "confirmed",
             "notes": "Large structure, no permit",
@@ -290,6 +300,7 @@ class InspectEndpointTest(TestCase):
             "estimated_floors": 2,
             "occupancy_observed": False,
             "visited_at": "2026-05-01T10:00:00Z",
+            "photo_ids": [str(self.photo.id)],
         }
 
     def test_assigned_inspector_can_submit_inspection(self):

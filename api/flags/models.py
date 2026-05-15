@@ -19,6 +19,9 @@ factor in zone_type (green_zone construction is always critical) and
 historical violations on the parcel.
 """
 
+import math
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -258,6 +261,54 @@ class Report(models.Model):
 
     def __str__(self) -> str:
         return f"Report '{self.title}' ({self.flag_count} flags)"
+
+
+def haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    R = 6_371_000
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(dlng / 2) ** 2)
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+class InspectionPhoto(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    flag = models.ForeignKey(Flag, on_delete=models.CASCADE, related_name="photos")
+    inspection = models.ForeignKey(
+        Inspection,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="photos",
+    )
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="inspection_photos",
+    )
+
+    # MinIO object key — e.g. inspection-photos/{flag_id}/{photo_id}.jpg
+    object_key = models.CharField(max_length=512)
+    caption = models.CharField(max_length=255, blank=True, default="")
+
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    accuracy_meters = models.FloatField(null=True, blank=True)
+    captured_at = models.DateTimeField()
+
+    # Computed server-side on upload via haversine_meters
+    distance_from_site_m = models.FloatField(null=True, blank=True)
+
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "flags_inspectionphoto"
+        ordering = ["-captured_at"]
+
+    def __str__(self) -> str:
+        return f"Photo {self.id} for Flag #{self.flag_id} ({self.distance_from_site_m:.0f}m)" if self.distance_from_site_m else f"Photo {self.id} for Flag #{self.flag_id}"
 
 
 def compute_severity(

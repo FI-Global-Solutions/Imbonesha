@@ -7,7 +7,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
 import { toast } from "sonner";
-import { Loader2, Mail, Lock, ArrowRight, Satellite, ShieldCheck, Map } from "lucide-react";
+import {
+  Loader2,
+  Mail,
+  Lock,
+  ArrowRight,
+  Satellite,
+  ShieldCheck,
+  Map,
+} from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,9 +33,21 @@ type FormData = z.infer<typeof schema>;
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007";
 
 const FEATURES = [
-  { icon: Satellite, label: "Satellite change detection", desc: "AI-powered analysis of before/after imagery" },
-  { icon: ShieldCheck, label: "Permit verification",      desc: "Cross-referenced against the national registry" },
-  { icon: Map,         label: "Live violation map",       desc: "Real-time flags across all districts" },
+  {
+    icon: Satellite,
+    label: "Satellite change detection",
+    desc: "AI-powered analysis of before/after imagery",
+  },
+  {
+    icon: ShieldCheck,
+    label: "Permit verification",
+    desc: "Cross-referenced against the national registry",
+  },
+  {
+    icon: Map,
+    label: "Live violation map",
+    desc: "Real-time flags across all districts",
+  },
 ];
 
 export default function LoginPage() {
@@ -35,7 +55,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
@@ -60,10 +84,8 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex bg-background">
-
       {/* ── Left panel — branding ───────────────────────────────────────── */}
       <div className="hidden lg:flex lg:w-[52%] flex-col relative overflow-hidden bg-[#0a1f12]">
-
         {/* Subtle grid texture */}
         <div className="absolute inset-0 opacity-[0.04] login-grid-texture" />
 
@@ -73,14 +95,22 @@ export default function LoginPage() {
 
         {/* Content */}
         <div className="relative z-10 flex flex-col h-full px-12 py-10">
-
           {/* Logo */}
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center overflow-hidden">
-              <Image src="/logo.png" alt="Imbonesha" width={30} height={30} className="object-contain" priority />
+              <Image
+                src="/logo.png"
+                alt="Imbonesha"
+                width={30}
+                height={30}
+                className="object-contain"
+                priority
+              />
             </div>
             <div>
-              <p className="text-white font-bold text-[15px] leading-none">Imbonesha</p>
+              <p className="text-white font-bold text-[15px] leading-none">
+                Imbonesha
+              </p>
               <p className="text-primary/70 text-[10px] font-semibold uppercase tracking-widest mt-0.5">
                 RHA · Rwanda
               </p>
@@ -97,14 +127,17 @@ export default function LoginPage() {
             </div>
 
             <h1 className="text-4xl font-bold text-white leading-[1.15] tracking-tight">
-              Detect unauthorized<br />
-              <span className="text-primary">construction</span><br />
+              Detect unauthorized
+              <br />
+              <span className="text-primary">construction</span>
+              <br />
               before it's too late.
             </h1>
 
             <p className="mt-5 text-white/50 text-sm leading-relaxed max-w-sm">
-              Imbonesha uses satellite imagery and machine learning to automatically
-              detect and flag unauthorized building activity across Rwanda.
+              Imbonesha uses satellite imagery and machine learning to
+              automatically detect and flag unauthorized building activity
+              across Rwanda.
             </p>
 
             {/* Feature list */}
@@ -115,7 +148,9 @@ export default function LoginPage() {
                     <Icon className="h-3.5 w-3.5 text-primary" />
                   </div>
                   <div>
-                    <p className="text-white text-sm font-medium leading-none">{label}</p>
+                    <p className="text-white text-sm font-medium leading-none">
+                      {label}
+                    </p>
                     <p className="text-white/40 text-xs mt-1">{desc}</p>
                   </div>
                 </div>
@@ -125,7 +160,8 @@ export default function LoginPage() {
 
           {/* Footer */}
           <p className="text-white/20 text-[11px]">
-            © {new Date().getFullYear()} Rwanda Housing Authority. All rights reserved.
+            © {new Date().getFullYear()} Rwanda Housing Authority. All rights
+            reserved.
           </p>
         </div>
       </div>
@@ -139,16 +175,24 @@ export default function LoginPage() {
         {/* Mobile logo (hidden on desktop) */}
         <div className="lg:hidden flex flex-col items-center gap-3 mb-10">
           <div className="h-16 w-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center overflow-hidden">
-            <Image src="/logo.png" alt="Imbonesha" width={48} height={48} className="object-contain" priority />
+            <Image
+              src="/logo.png"
+              alt="Imbonesha"
+              width={48}
+              height={48}
+              className="object-contain"
+              priority
+            />
           </div>
           <div className="text-center">
             <p className="font-bold text-lg">Imbonesha</p>
-            <p className="text-xs text-muted-foreground">Rwanda Housing Authority</p>
+            <p className="text-xs text-muted-foreground">
+              Rwanda Housing Authority
+            </p>
           </div>
         </div>
 
         <div className="w-full max-w-[380px]">
-
           {/* Heading */}
           <div className="mb-8">
             <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
@@ -159,10 +203,11 @@ export default function LoginPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-
             {/* Email */}
             <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-sm font-medium">Email address</Label>
+              <Label htmlFor="email" className="text-sm font-medium">
+                Email address
+              </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
@@ -175,13 +220,17 @@ export default function LoginPage() {
                 />
               </div>
               {errors.email && (
-                <p className="text-xs text-destructive">{errors.email.message}</p>
+                <p className="text-xs text-destructive">
+                  {errors.email.message}
+                </p>
               )}
             </div>
 
             {/* Password */}
             <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium">
+                Password
+              </Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
@@ -200,7 +249,9 @@ export default function LoginPage() {
                 </button>
               </div>
               {errors.password && (
-                <p className="text-xs text-destructive">{errors.password.message}</p>
+                <p className="text-xs text-destructive">
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
@@ -224,7 +275,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Demo credentials */}
+          {/* Demo credentials
           <div className="mt-8 rounded-xl border border-border bg-muted/40 px-4 py-3.5">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
               Demo credentials
@@ -239,8 +290,7 @@ export default function LoginPage() {
                 <span className="text-xs font-mono font-medium">Demo2026!</span>
               </div>
             </div>
-          </div>
-
+          </div> */}
         </div>
       </div>
     </div>

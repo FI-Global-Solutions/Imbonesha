@@ -45,6 +45,7 @@ class NotificationService:
     def notify_flag_assigned(flag, inspector, assigned_by) -> None:
         """Enqueue a notification to the inspector when a flag is assigned."""
         from .tasks import send_notification_task
+        from .models import MobileNotification
 
         parcel = _parcel_context(flag)
         subject = (
@@ -68,6 +69,15 @@ class NotificationService:
             body_html=body_html,
             notification_type="flag_assigned",
             related_flag_id=flag.id,
+        )
+
+        permit_text = "No permit" if not parcel["has_active_permit"] else "Permitted"
+        MobileNotification.objects.create(
+            recipient=inspector,
+            title=f"New assignment: {parcel['upi']}",
+            body=f"{flag.get_severity_display()} severity · {permit_text}",
+            notification_type="flag_assigned",
+            related_flag=flag,
         )
 
     @staticmethod

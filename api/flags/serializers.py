@@ -12,7 +12,7 @@ from detections.models import Detection
 from imagery.models import ImageScene
 from parcels.models import Parcel, Permit
 
-from .models import AuditLog, Flag, Inspection, Report, VALID_TRANSITIONS
+from .models import AuditLog, Flag, Inspection, InspectionPhoto, Report, VALID_TRANSITIONS
 
 
 class _PermitSerializer(serializers.ModelSerializer):
@@ -188,12 +188,13 @@ class FlagDetailSerializer(FlagListSerializer):
     inspections = serializers.SerializerMethodField()
     audit_logs = serializers.SerializerMethodField()
     available_transitions = serializers.SerializerMethodField()
+    photos = serializers.SerializerMethodField()
 
     class Meta(FlagListSerializer.Meta):
         fields = FlagListSerializer.Meta.fields + (
             "parcel", "detection", "notes",
             "assigned_to", "assigned_at", "assigned_by_email",
-            "inspections", "audit_logs", "available_transitions",
+            "inspections", "audit_logs", "available_transitions", "photos",
         )
 
     def get_parcel(self, obj: Flag) -> dict | None:
@@ -218,6 +219,25 @@ class FlagDetailSerializer(FlagListSerializer):
 
     def get_available_transitions(self, obj: Flag) -> list[str]:
         return sorted(VALID_TRANSITIONS.get(obj.status, set()))
+
+    def get_photos(self, obj: Flag) -> list:
+        return InspectionPhotoSerializer(obj.photos.all(), many=True).data
+
+
+class InspectionPhotoSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InspectionPhoto
+        fields = (
+            "id", "url", "caption",
+            "latitude", "longitude", "accuracy_meters",
+            "captured_at", "distance_from_site_m", "uploaded_at",
+        )
+
+    def get_url(self, obj: InspectionPhoto) -> str | None:
+        from flags.views import _presign
+        return _presign(obj.object_key)
 
 
 class ReportSerializer(serializers.ModelSerializer):
