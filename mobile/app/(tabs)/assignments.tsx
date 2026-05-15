@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
-  FlatList, RefreshControl, SafeAreaView,
+  FlatList, RefreshControl,
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useCompletedInspections, useMyAssignments, useProfile } from '../../lib/api/hooks';

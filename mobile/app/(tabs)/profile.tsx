@@ -1,23 +1,25 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
   Pressable,
-  SafeAreaView,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Switch,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
+import * as SecureStore from 'expo-secure-store';
 import { useCompletedInspections, useMyAssignments, useProfile, useUnreadCount } from '../../lib/api/hooks';
 import { useAuthStore } from '../../lib/auth';
+import { registerForPushNotifications, unregisterPushNotifications } from '../../lib/notifications';
 import { darkColors, lightColors, radius, spacing } from '../../lib/theme';
 import { useThemeStore } from '../../lib/themeStore';
 
@@ -94,14 +96,45 @@ export default function ProfileScreen() {
   const { data: completed } = useCompletedInspections();
   const { data: unreadData } = useUnreadCount();
   const unreadCount = unreadData?.count ?? 0;
-  const { isDark, notificationsEnabled, loaded, load, toggleTheme, toggleNotifications } = useThemeStore();
+  const { isDark, loaded, load, toggleTheme } = useThemeStore();
   const c = isDark ? darkColors : lightColors;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
 
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [togglingPush, setTogglingPush] = useState(false);
+
   useEffect(() => { if (!loaded) load(); }, [loaded]);
+
+  // Load persisted push preference
+  useEffect(() => {
+    SecureStore.getItemAsync('push_enabled').then((val) => {
+      setPushEnabled(val === 'true');
+    }).catch(() => {});
+  }, []);
+
+  async function handlePushToggle(value: boolean) {
+    setTogglingPush(true);
+    // Optimistically update UI immediately
+    setPushEnabled(value);
+    try {
+      if (value) {
+        await SecureStore.setItemAsync('push_enabled', 'true');
+        // Best-effort token registration — silently skipped in Expo Go
+        await registerForPushNotifications();
+      } else {
+        await SecureStore.setItemAsync('push_enabled', 'false');
+        await unregisterPushNotifications();
+      }
+      Haptics.selectionAsync();
+    } catch {
+      // Silent failure — UI stays at the new value
+    } finally {
+      setTogglingPush(false);
+    }
+  }
 
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
@@ -153,8 +186,6 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: c.background }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-
       {/* Header bar */}
       <View style={[styles.header, { borderBottomColor: c.border }]}>
         <Text style={[styles.headerTitle, { color: c.foreground }]}>My Profile</Text>
@@ -221,14 +252,16 @@ export default function ProfileScreen() {
           <View style={styles.infoRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.infoLabel, { color: c.muted }]}>Push notifications</Text>
-              <Text style={[styles.infoSubLabel, { color: c.mutedForeground }]}>Coming soon</Text>
+              {togglingPush && (
+                <ActivityIndicator size="small" color={c.primary} style={{ marginTop: 4, alignSelf: 'flex-start' }} />
+              )}
             </View>
             <Switch
-              value={notificationsEnabled}
-              onValueChange={() => { toggleNotifications(); Haptics.selectionAsync(); }}
+              value={pushEnabled}
+              onValueChange={handlePushToggle}
               trackColor={{ false: c.border, true: c.primary }}
               thumbColor="#fff"
-              disabled
+              disabled={togglingPush}
             />
           </View>
           {unreadCount > 0 && (
@@ -305,13 +338,17 @@ export default function ProfileScreen() {
             icon="🔔"
             label="Push notifications"
             right={
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={() => { toggleNotifications(); Haptics.selectionAsync(); }}
-                trackColor={{ false: lightColors.border, true: c.primary }}
-                thumbColor="#fff"
-                disabled
-              />
+              togglingPush
+                ? <ActivityIndicator size="small" color={c.primary} />
+                : (
+                  <Switch
+                    value={pushEnabled}
+                    onValueChange={handlePushToggle}
+                    trackColor={{ false: lightColors.border, true: c.primary }}
+                    thumbColor="#fff"
+                    disabled={togglingPush}
+                  />
+                )
             }
           />
 

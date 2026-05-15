@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform,
-  ScrollView, SafeAreaView, StyleSheet, Switch, Text, TextInput,
+  ScrollView, StyleSheet, Switch, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useFlag, useFlagImagery, useSubmitInspection, useUploadPhoto } from '../lib/api/hooks';
