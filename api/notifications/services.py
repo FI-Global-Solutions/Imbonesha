@@ -72,13 +72,26 @@ class NotificationService:
         )
 
         permit_text = "No permit" if not parcel["has_active_permit"] else "Permitted"
+        push_body = f"{flag.get_severity_display()} severity · {permit_text}"
         MobileNotification.objects.create(
             recipient=inspector,
             title=f"New assignment: {parcel['upi']}",
-            body=f"{flag.get_severity_display()} severity · {permit_text}",
+            body=push_body,
             notification_type="flag_assigned",
             related_flag=flag,
         )
+
+        if getattr(inspector, "expo_push_token", ""):
+            send_notification_task.delay(
+                recipient_id=str(inspector.id),
+                subject=f"New assignment: {parcel['upi']}",
+                body_text=push_body,
+                body_html="",
+                notification_type="flag_assigned",
+                related_flag_id=flag.id,
+                backend_override="expo_push",
+                task_context={"flag_id": flag.id},
+            )
 
     @staticmethod
     def notify_inspection_complete(flag, inspection) -> None:

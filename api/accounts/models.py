@@ -42,6 +42,8 @@ class User(AbstractUser):
 
     phone_number = models.CharField(max_length=32, blank=True, default="")
 
+    expo_push_token = models.CharField(max_length=200, blank=True, default="")
+
     USERNAME_FIELD = "email"
     # `username` stays in REQUIRED_FIELDS for compatibility with createsuperuser.
     REQUIRED_FIELDS = ["username"]

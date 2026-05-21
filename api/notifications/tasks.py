@@ -7,6 +7,13 @@ from .services import get_backend
 logger = logging.getLogger(__name__)
 
 
+def _get_backend_for(backend_override: str | None = None):
+    if backend_override == "expo_push":
+        from .backends.expo_push import ExpoPushBackend
+        return ExpoPushBackend()
+    return get_backend()
+
+
 @shared_task(
     bind=True,
     max_retries=3,
@@ -21,10 +28,14 @@ def send_notification_task(
     body_text: str,
     body_html: str,
     notification_type: str,
-    related_flag_id: str | None = None,
+    related_flag_id: int | None = None,
+    backend_override: str | None = None,
+    task_context: dict | None = None,
 ) -> dict:
     from accounts.models import User
     from .models import NotificationLog
+
+    is_push = backend_override == "expo_push"
 
     try:
         recipient = User.objects.get(id=recipient_id)
@@ -32,12 +43,13 @@ def send_notification_task(
         logger.error("Notification recipient %s not found — dropping task", recipient_id)
         return {"success": False, "reason": "recipient_not_found"}
 
-    backend = get_backend()
+    backend = _get_backend_for(backend_override)
     success = backend.send(
         recipient=recipient,
         subject=subject,
         body_text=body_text,
         body_html=body_html,
+        context=task_context,
     )
 
     NotificationLog.objects.create(
@@ -50,6 +62,9 @@ def send_notification_task(
     )
 
     if not success:
+        # Push failures are silent — no retry, never block the assignment flow
+        if is_push:
+            return {"success": False, "reason": "push_failed", "type": notification_type}
         raise self.retry(exc=Exception(f"Notification send failed for {recipient.email}"))
 
     return {"success": True, "recipient": recipient.email, "type": notification_type}
