@@ -70,6 +70,7 @@ export function Sidebar() {
 
   useEffect(() => {
     const stored = localStorage.getItem("sidebar-collapsed");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored !== null) setCollapsed(stored === "true");
   }, []);
 

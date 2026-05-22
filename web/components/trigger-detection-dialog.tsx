@@ -288,6 +288,7 @@ export function TriggerDetectionDialog() {
   useEffect(() => {
     if (!triggerDialogOpen) return;
     const inFlight = allJobs.find((j) => j.status === "queued" || j.status === "running");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (inFlight && activeJobId === null) setActiveJobId(inFlight.id);
   }, [triggerDialogOpen, allJobs]);
 
