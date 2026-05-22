@@ -114,8 +114,8 @@ services:
       context: ../ml
       dockerfile: Dockerfile
     environment:
-      CHECKPOINT_PATH: /app/checkpoints/siamese_unet_v3.pth
-      DETECTION_THRESHOLD: "0.02"
+      CHECKPOINT_PATH: /app/checkpoints/siamese_unet_v4.pth
+      DETECTION_THRESHOLD: "0.3"
       LOG_LEVEL: INFO
     volumes:
       - ../ml/app:/app/app

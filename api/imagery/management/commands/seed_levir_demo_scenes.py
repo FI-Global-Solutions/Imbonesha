@@ -131,6 +131,11 @@ class Command(BaseCommand):
             help="Path to LEVIR-CD directory (default: ml/data/LEVIR-CD relative to repo root)",
         )
         parser.add_argument(
+            "--names",
+            default=None,
+            help="Comma-separated display names for each pair (same order as --pair-ids).",
+        )
+        parser.add_argument(
             "--force",
             action="store_true",
             help="Delete existing demo AOIs for these pair IDs and recreate.",
@@ -140,6 +145,15 @@ class Command(BaseCommand):
         pair_ids = [p.strip() for p in options["pair_ids"].split(",") if p.strip()]
         if not pair_ids:
             raise CommandError("--pair-ids must be a non-empty comma-separated list")
+
+        if options["names"]:
+            names = [n.strip() for n in options["names"].split(",")]
+            if len(names) != len(pair_ids):
+                raise CommandError(
+                    f"--names has {len(names)} entries but --pair-ids has {len(pair_ids)}. They must match."
+                )
+        else:
+            names = [None] * len(pair_ids)
 
         # Resolve data directory.
         if options["data_dir"]:
@@ -168,9 +182,10 @@ class Command(BaseCommand):
         geo_transform = _reprojected_transform()
         aoi_boundary = _aoi_boundary()
 
-        for pair_id in pair_ids:
+        for pair_id, display_name in zip(pair_ids, names):
             self._seed_pair(
                 pair_id=pair_id,
+                display_name=display_name,
                 a_dir=a_dir,
                 b_dir=b_dir,
                 geo_transform=geo_transform,
@@ -181,13 +196,14 @@ class Command(BaseCommand):
     def _seed_pair(
         self,
         pair_id: str,
+        display_name: str | None,
         a_dir: Path,
         b_dir: Path,
         geo_transform: dict,
         aoi_boundary: Polygon,
         force: bool,
     ) -> None:
-        aoi_name = f"LEVIR Demo: {pair_id}"
+        aoi_name = display_name if display_name else f"LEVIR Demo: {pair_id}"
 
         if force:
             AOI.objects.filter(name=aoi_name).delete()

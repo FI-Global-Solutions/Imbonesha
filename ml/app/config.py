@@ -6,8 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    checkpoint_path: str = "/app/checkpoints/siamese_unet_v3.pth"
-    detection_threshold: float = 0.02
+    checkpoint_path: str = "/app/checkpoints/siamese_unet_v4.pth"
+    detection_threshold: float = 0.3
     min_polygon_sqm: float = 25.0
     max_polygon_sqm: float = 10_000.0
     # Approximate metres per degree at Kacyiru latitude (-1.94°)

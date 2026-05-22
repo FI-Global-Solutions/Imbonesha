@@ -21,6 +21,7 @@ import logging
 import time
 from pathlib import Path
 
+import albumentations as A
 import numpy as np
 import torch
 import torch.nn as nn
@@ -55,10 +56,18 @@ IMG_SIZE = 256
 # ---------------------------------------------------------------------------
 
 
+_color_jitter = A.Compose([
+    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+    A.HueSaturationValue(hue_shift_limit=10, sat_shift_limit=15, val_shift_limit=10, p=0.3),
+])
+
+
 class SyncTransform:
     """Apply the same random spatial transforms to T1, T2, and label.
 
     All three must receive identical transforms or the change signal is destroyed.
+    Color jitter is applied independently to T1 and T2 to simulate different
+    sensor acquisition conditions between capture dates.
     Each call uses a per-sample seed so results are deterministic given the index.
     """
 
@@ -111,6 +120,13 @@ class SyncTransform:
             t1 = np.rot90(t1, k).copy()
             t2 = np.rot90(t2, k).copy()
             lbl = np.rot90(lbl, k).copy()
+
+        # Color jitter — applied independently to T1 and T2 (not the label).
+        # Converts to uint8 for albumentations, then back to float32.
+        t1_u8 = (t1 * 255).clip(0, 255).astype(np.uint8)
+        t2_u8 = (t2 * 255).clip(0, 255).astype(np.uint8)
+        t1 = _color_jitter(image=t1_u8)["image"].astype(np.float32) / 255.0
+        t2 = _color_jitter(image=t2_u8)["image"].astype(np.float32) / 255.0
 
         return t1, t2, lbl
 
@@ -359,7 +375,9 @@ def train(
 
     model = SiameseUNet(base_ch=32, dropout=dropout).to(device)
     optimiser = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=epochs)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimiser, T_0=20, T_mult=2, eta_min=1e-6,
+    )
 
     best_iou = 0.0
     epochs_no_improve = 0
@@ -408,6 +426,22 @@ def train(
         for row in log_lines:
             f.write(json.dumps(row) + "\n")
 
+    # ── Summary ──────────────────────────────────────────────────────────────
+    best_row = max(log_lines, key=lambda r: r["val_iou"])
+    print("\n=== TRAINING COMPLETE ===")
+    print(f"Best val IoU:  {best_iou:.4f} (epoch {best_row['epoch']})")
+    print(f"Total epochs:  {len(log_lines)}")
+    print(f"Checkpoint:    {checkpoint_path}")
+    print(f"\nEpoch summary (every 10 epochs):")
+    print(f"{'Epoch':>7} {'Train Loss':>11} {'Train IoU':>10} {'Val IoU':>8}")
+    print("-" * 42)
+    milestones = {r["epoch"] for r in log_lines if r["epoch"] % 10 == 0}
+    milestones.add(best_row["epoch"])
+    for row in log_lines:
+        if row["epoch"] in milestones:
+            star = " ★" if row["epoch"] == best_row["epoch"] else ""
+            print(f"{row['epoch']:>7} {row['train_loss']:>11.4f} {row['train_iou']:>10.4f} {row['val_iou']:>8.4f}{star}")
+
     logger.info("Training complete. Best val IoU: %.4f", best_iou)
     logger.info("Checkpoint: %s", checkpoint_path)
     logger.info("Log:        %s", LOG_PATH)
@@ -424,7 +458,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--synthetic", action="store_true")
     p.add_argument("--epochs", type=int, default=5)
     p.add_argument("--batch-size", type=int, default=8)
-    p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--lr", type=float, default=5e-4)
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--device", type=str, default=_pick_device())
     p.add_argument("--output-name", type=str, default=_DEFAULT_CHECKPOINT_NAME)
