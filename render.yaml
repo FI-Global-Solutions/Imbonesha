@@ -21,11 +21,7 @@ services:
       - key: CORS_ALLOWED_ORIGINS
         value: https://imbonesha-dashboard.vercel.app
       - key: PERMIT_SERVICE_URL
-        fromService:
-          type: web
-          name: imbonesha-permit
-          property: host
-          envVarKey: PERMIT_SERVICE_URL
+        value: https://imbonesha-permit.onrender.com
       - key: PERMIT_ADAPTER
         value: mock
       - key: ML_SERVICE_URL
@@ -61,4 +57,5 @@ services:
   - type: redis
     name: imbonesha-redis
     plan: free
+    ipAllowList: []
     maxmemoryPolicy: noeviction
