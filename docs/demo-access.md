@@ -5,6 +5,7 @@ URL: https://imbonesha-dashboard.vercel.app
 
 ## API
 URL: https://imbonesha-api.onrender.com
+Health check: https://imbonesha-api.onrender.com/health/
 
 ## Login credentials
 
