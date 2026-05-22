@@ -137,12 +137,23 @@ def _wgs84_to_crop_pixels(
 
 
 def _fetch_image(client, bucket: str, cog_path: str):
-    """Download a full scene from MinIO and return a PIL Image (RGBA mode)."""
+    """Download a full scene and return a PIL Image (RGBA mode).
+
+    If cog_path is a full URL (Supabase Storage), fetch directly via httpx.
+    Otherwise use the MinIO client (local dev).
+    """
+    import httpx
     from PIL import Image
 
-    resp = client.get_object(bucket, cog_path)
-    data = resp.read()
-    resp.close()
+    if cog_path.startswith("http://") or cog_path.startswith("https://"):
+        response = httpx.get(cog_path, timeout=30)
+        response.raise_for_status()
+        data = response.content
+    else:
+        resp = client.get_object(bucket, cog_path)
+        data = resp.read()
+        resp.close()
+
     img = Image.open(io.BytesIO(data))
     return img.convert("RGBA")
 
