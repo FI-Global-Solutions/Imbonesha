@@ -1,0 +1,25 @@
+name: Keep services alive
+
+on:
+  schedule:
+    - cron: '0 8 * * 1,4'  # Monday and Thursday at 8am UTC
+  workflow_dispatch:        # Allow manual trigger from GitHub UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render API (prevents cold start decay)
+        run: |
+          curl -f https://imbonesha-api.onrender.com/health/ \
+            --max-time 90 \
+            --retry 3 \
+            --retry-delay 15 \
+            || echo "Render wake-up triggered — cold start may have occurred"
+
+      - name: Ping Supabase (prevents project pause)
+        run: |
+          curl -f "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            --max-time 30 \
+            || echo "Supabase pinged"
