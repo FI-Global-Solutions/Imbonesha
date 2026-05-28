@@ -275,7 +275,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Demo credentials
+          {/* Demo credential
           <div className="mt-8 rounded-xl border border-border bg-muted/40 px-4 py-3.5">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
               Demo credentials
