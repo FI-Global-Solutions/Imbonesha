@@ -273,6 +273,7 @@ def _build_tile(flag, which: str) -> bytes:
 class FlagViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
     GenericViewSet,
 ):
     permission_classes = [IsAuthenticated]
@@ -318,6 +319,42 @@ class FlagViewSet(
                 status=status.HTTP_403_FORBIDDEN,
             )
         return None
+
+    def _require_rha_or_admin(self, request) -> Response | None:
+        if request.user.role not in (UserRole.ADMIN, UserRole.DISTRICT_ADMIN, UserRole.RHA_OFFICER):
+            return Response(
+                {"detail": "You do not have permission to delete flags."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
+    def destroy(self, request: Request, pk=None) -> Response:
+        denied = self._require_rha_or_admin(request)
+        if denied:
+            return denied
+        flag = self.get_object()
+        detection = flag.detection
+        flag.delete()
+        # OneToOneField — detection has no other flags after this delete, safe to remove.
+        detection.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["delete"], url_path="bulk-delete")
+    def bulk_delete(self, request: Request) -> Response:
+        denied = self._require_rha_or_admin(request)
+        if denied:
+            return denied
+        ids = request.data.get("ids", [])
+        if not ids or not isinstance(ids, list):
+            return Response({"detail": "Provide a non-empty list of flag ids."}, status=status.HTTP_400_BAD_REQUEST)
+        flags = Flag.objects.filter(id__in=ids)
+        detection_ids = list(flags.values_list("detection_id", flat=True))
+        deleted_count = flags.count()
+        flags.delete()
+        # Delete associated detections (OneToOne — no other flags can reference them).
+        from detections.models import Detection
+        Detection.objects.filter(id__in=detection_ids).delete()
+        return Response({"deleted": deleted_count}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="assign")
     def assign(self, request: Request, pk=None) -> Response:

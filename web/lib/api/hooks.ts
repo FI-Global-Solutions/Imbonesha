@@ -192,3 +192,23 @@ export function useDeleteReport() {
     },
   });
 }
+
+export function useDeleteFlag() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, number>({
+    mutationFn: (id) => apiClient.delete(`/flags/${id}/`).then(() => {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["flags"] });
+    },
+  });
+}
+
+export function useDeleteFlags() {
+  const qc = useQueryClient();
+  return useMutation<{ deleted: number }, Error, number[]>({
+    mutationFn: (ids) => apiClient.delete("/flags/bulk-delete/", { data: { ids } }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["flags"] });
+    },
+  });
+}

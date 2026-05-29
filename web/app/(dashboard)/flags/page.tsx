@@ -14,7 +14,7 @@ import {
 import { formatDistanceToNow, format } from "date-fns";
 import {
   Download, Search, X, ChevronUp, ChevronDown, ChevronsUpDown,
-  MoreHorizontal, ExternalLink, FileText, Eye, UserCheck,
+  MoreHorizontal, ExternalLink, FileText, Eye, UserCheck, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,8 +37,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 
-import { useFlags, useMe } from "@/lib/api/hooks";
+import { useFlags, useMe, useDeleteFlag, useDeleteFlags } from "@/lib/api/hooks";
 import { useUIStore } from "@/lib/store";
 import { getCookie } from "@/lib/api/client";
 import { SEVERITY_BADGE_CLASS, SEVERITY_LABEL, STATUS_BADGE_CLASS, STATUS_LABEL } from "@/lib/severity";
@@ -74,7 +77,11 @@ export default function FlagsPage() {
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [preselectedFlagIds, setPreselectedFlagIds] = useState<number[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ ids: number[] } | null>(null);
   const canAssign = me?.role === "admin" || me?.role === "district_admin";
+  const canDelete = me?.role === "admin" || me?.role === "district_admin" || me?.role === "rha_officer";
+  const deleteFlag = useDeleteFlag();
+  const deleteFlags = useDeleteFlags();
 
   const { data, isLoading } = useFlags({ limit: 500 });
   const allFlags = data?.results ?? [];
@@ -278,6 +285,21 @@ export default function FlagsPage() {
                 <ExternalLink className="h-4 w-4" />
                 Open in admin
               </DropdownMenuItem>
+              {canDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteConfirm({ ids: [flag.id] });
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete flag
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -502,6 +524,17 @@ export default function FlagsPage() {
             <FileText className="h-3.5 w-3.5" />
             Generate report
           </Button>
+          {canDelete && (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="gap-1.5"
+              onClick={() => setDeleteConfirm({ ids: selectedIds })}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete {selectedIds.length} flag{selectedIds.length !== 1 ? "s" : ""}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -526,6 +559,44 @@ export default function FlagsPage() {
         flagIds={selectedIds}
         onSuccess={() => setRowSelection({})}
       />
+
+      <Dialog open={!!deleteConfirm} onOpenChange={(o) => { if (!o) setDeleteConfirm(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Delete {deleteConfirm?.ids.length === 1 ? "flag" : `${deleteConfirm?.ids.length} flags`}?
+            </DialogTitle>
+            <DialogDescription>
+              This permanently removes the {deleteConfirm?.ids.length === 1 ? "flag" : "selected flags"} and
+              associated audit logs. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (!deleteConfirm) return;
+                try {
+                  if (deleteConfirm.ids.length === 1) {
+                    await deleteFlag.mutateAsync(deleteConfirm.ids[0]);
+                    toast.success("Flag deleted");
+                  } else {
+                    const res = await deleteFlags.mutateAsync(deleteConfirm.ids);
+                    toast.success(`${res.deleted} flags deleted`);
+                  }
+                  setRowSelection({});
+                  setDeleteConfirm(null);
+                } catch {
+                  toast.error("Failed to delete flag(s)");
+                }
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
