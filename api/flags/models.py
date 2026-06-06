@@ -183,6 +183,12 @@ class Inspection(models.Model):
     visited_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
 
+    inspector_lat = models.FloatField(null=True, blank=True)
+    inspector_lng = models.FloatField(null=True, blank=True)
+    inspector_accuracy_m = models.FloatField(null=True, blank=True)
+    inspector_location_name = models.CharField(max_length=255, blank=True, default="")
+    distance_to_site_m = models.FloatField(null=True, blank=True)
+
     class Meta:
         db_table = "flags_inspection"
         ordering = ["-submitted_at"]

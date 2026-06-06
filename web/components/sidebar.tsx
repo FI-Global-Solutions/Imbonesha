@@ -16,7 +16,6 @@ const ADMIN_NAV = [
 ];
 
 const INSPECTOR_NAV = [
-  { href: "/",            label: "Map",            icon: Map },
   { href: "/assignments", label: "My Assignments", icon: ClipboardList, showBadge: true },
   { href: "/analytics",   label: "Analytics",      icon: BarChart3 },
 ];

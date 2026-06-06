@@ -162,6 +162,8 @@ class _InspectionSerializer(serializers.ModelSerializer):
             "id", "verdict", "notes", "construction_stage",
             "estimated_floors", "occupancy_observed",
             "visited_at", "submitted_at", "inspector_name",
+            "inspector_lat", "inspector_lng", "inspector_accuracy_m",
+            "inspector_location_name", "distance_to_site_m",
         )
 
     def get_inspector_name(self, obj: Inspection) -> str:
@@ -230,14 +232,13 @@ class InspectionPhotoSerializer(serializers.ModelSerializer):
     class Meta:
         model = InspectionPhoto
         fields = (
-            "id", "url", "caption",
+            "id", "inspection_id", "url", "caption",
             "latitude", "longitude", "accuracy_meters",
             "captured_at", "distance_from_site_m", "uploaded_at",
         )
 
     def get_url(self, obj: InspectionPhoto) -> str | None:
-        from flags.views import _presign
-        return _presign(obj.object_key)
+        return f"/api/v1/flags/{obj.flag_id}/photos/{obj.id}/proxy/"
 
 
 class ReportSerializer(serializers.ModelSerializer):

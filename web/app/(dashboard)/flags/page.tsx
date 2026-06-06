@@ -178,6 +178,16 @@ export default function FlagsPage() {
       ),
       cell: ({ getValue }) => getValue() || <span className="text-muted-foreground text-xs">—</span>,
     }),
+    col.accessor("assigned_to_name", {
+      header: "Inspector",
+      cell: ({ getValue }) => {
+        const v = getValue();
+        return v
+          ? <span className="text-xs font-medium">{v}</span>
+          : <span className="text-muted-foreground text-xs">—</span>;
+      },
+      enableSorting: false,
+    }),
     col.accessor("permit_status", {
       header: "Permit",
       cell: ({ getValue }) => {

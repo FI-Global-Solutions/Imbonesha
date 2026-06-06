@@ -528,6 +528,11 @@ class FlagViewSet(
             estimated_floors=request.data.get("estimated_floors"),
             occupancy_observed=bool(request.data.get("occupancy_observed", False)),
             visited_at=visited_at,
+            inspector_lat=request.data.get("inspector_lat"),
+            inspector_lng=request.data.get("inspector_lng"),
+            inspector_accuracy_m=request.data.get("inspector_accuracy_m"),
+            inspector_location_name=request.data.get("inspector_location_name", ""),
+            distance_to_site_m=request.data.get("distance_to_site_m"),
         )
         # Link uploaded photos to this inspection record.
         photos.update(inspection=inspection)
@@ -656,6 +661,57 @@ class FlagViewSet(
         )
 
         return Response(InspectionPhotoSerializer(photo).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path=r"photos/(?P<photo_id>[0-9a-f-]+)/proxy",
+            permission_classes=[AllowAny])
+    def photo_proxy(self, request: Request, pk=None, photo_id=None) -> StreamingHttpResponse:
+        """Proxy an inspection photo from MinIO so the browser never needs a direct MinIO URL.
+
+        Accepts JWT via Authorization header OR ?token= query param (same pattern as /stream/).
+        """
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+        from rest_framework_simplejwt.exceptions import TokenError
+
+        user = request.user if request.user and request.user.is_authenticated else None
+        if not user:
+            raw = request.query_params.get("token")
+            if not raw:
+                return StreamingHttpResponse(status=401)
+            try:
+                jwt_auth = JWTAuthentication()
+                validated = jwt_auth.get_validated_token(raw)
+                user = jwt_auth.get_user(validated)
+            except (TokenError, Exception):
+                return StreamingHttpResponse(status=401)
+        if not user or not user.is_authenticated:
+            return StreamingHttpResponse(status=401)
+
+        try:
+            photo = InspectionPhoto.objects.get(id=photo_id, flag__id=pk)
+        except InspectionPhoto.DoesNotExist:
+            return StreamingHttpResponse(status=404)
+
+        try:
+            from minio import Minio
+            client = Minio(
+                settings.MINIO_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                secure=getattr(settings, "MINIO_SECURE", False),
+            )
+            bucket = getattr(settings, "MINIO_BUCKET", "imbonesha-imagery")
+            response = client.get_object(bucket, photo.object_key)
+            data = response.read()
+            response.close()
+            response.release_conn()
+        except Exception:
+            return StreamingHttpResponse(status=502)
+
+        return StreamingHttpResponse(
+            streaming_content=iter([data]),
+            content_type="image/jpeg",
+            headers={"Cache-Control": "private, max-age=900"},
+        )
 
     @action(detail=False, methods=["get"], url_path="export.csv", url_name="export_csv",
             permission_classes=[AllowAny])
@@ -825,15 +881,17 @@ class FlagViewSet(
 def _presign(cog_path: str) -> str | None:
     """Generate a 15-minute presigned GET URL for a MinIO object.
 
-    MinIO is configured with MINIO_SERVER_URL=http://localhost:9007 so it
-    produces presigned URLs using localhost:9007 — valid from the browser.
-    The api container still connects to MinIO via the internal minio:9000
-    hostname for uploads and signing requests.
+    Sign using the internal minio:9000 endpoint (reachable from the api
+    container), then rewrite the origin to MINIO_PUBLIC_ENDPOINT so the URL
+    is browser-resolvable. MinIO's MINIO_SERVER_URL=http://localhost:9007
+    makes it accept requests where the signed host is minio:9000 but the
+    actual request arrives at localhost:9007.
     """
     if not cog_path:
         return None
     try:
         from minio import Minio
+        from urllib.parse import urlparse, urlunparse
 
         client = Minio(
             settings.MINIO_ENDPOINT,
@@ -842,7 +900,15 @@ def _presign(cog_path: str) -> str | None:
             secure=getattr(settings, "MINIO_SECURE", False),
         )
         bucket = getattr(settings, "MINIO_BUCKET", "imbonesha-imagery")
-        return client.presigned_get_object(bucket, cog_path, expires=timedelta(minutes=15))
+        url = client.presigned_get_object(bucket, cog_path, expires=timedelta(minutes=15))
+
+        public_endpoint = getattr(settings, "MINIO_PUBLIC_ENDPOINT", None)
+        if public_endpoint:
+            parsed = urlparse(url)
+            public = urlparse(public_endpoint)
+            url = urlunparse(parsed._replace(scheme=public.scheme, netloc=public.netloc))
+
+        return url
     except Exception:
         return None
 

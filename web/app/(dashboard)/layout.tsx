@@ -17,7 +17,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!isLoading && (isError || !token)) {
       router.push("/login");
     }
-  }, [isLoading, isError, token, router]);
+    // Redirect inspectors away from the map to their assignments
+    if (!isLoading && user?.role === "inspector" && typeof window !== "undefined" && window.location.pathname === "/") {
+      router.replace("/assignments");
+    }
+  }, [isLoading, isError, token, router, user]);
 
   if (isLoading || !user) {
     return (

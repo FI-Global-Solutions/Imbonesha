@@ -178,11 +178,11 @@ export default function InspectPage() {
 
         {/* Satellite imagery */}
         {t1 && t2 ? (
-          <div className="rounded-xl overflow-hidden border">
+          <div className="rounded-xl overflow-hidden border bg-black">
             <ReactCompareSlider
-              style={{ height: 280 }}
-              itemOne={<ReactCompareSliderImage src={t1} alt="Before (T1)" style={{ objectFit: "cover" }} />}
-              itemTwo={<ReactCompareSliderImage src={t2} alt="After (T2)" style={{ objectFit: "cover" }} />}
+              style={{ height: 420 }}
+              itemOne={<ReactCompareSliderImage src={t1} alt="Before (T1)" style={{ objectFit: "contain", background: "#000" }} />}
+              itemTwo={<ReactCompareSliderImage src={t2} alt="After (T2)" style={{ objectFit: "contain", background: "#000" }} />}
             />
             <div className="flex justify-between px-3 py-1.5 bg-muted/50 text-xs text-muted-foreground">
               <span>Before · {imagery?.t1_captured_at ? format(new Date(imagery.t1_captured_at), "MMM yyyy") : "T1"}</span>

@@ -15,7 +15,7 @@ import { useUIStore } from "@/lib/store";
 import { useFlag, useFlagImagery, useMe, useAssignFlag, useUnassignFlag } from "@/lib/api/hooks";
 import { AssignInspectorDialog } from "@/components/assign-inspector-dialog";
 import { SEVERITY_BADGE_CLASS, SEVERITY_LABEL, STATUS_BADGE_CLASS, STATUS_LABEL } from "@/lib/severity";
-import type { FlagDetail, Severity, FlagStatus, AuditLog } from "@/lib/api/types";
+import type { FlagDetail, Severity, FlagStatus, AuditLog, InspectionPhoto } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 const ADMIN_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007";
@@ -259,6 +259,61 @@ function AssignmentBlock({ flag, canAssign }: { flag: FlagDetail; canAssign: boo
   );
 }
 
+function InspectionPhotoGrid({ photos }: { photos: InspectionPhoto[] }) {
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  if (photos.length === 0) return null;
+
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-1.5 mt-2">
+        {photos.map((p) => {
+          const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007";
+          const src = authedImageUrl(p.url ? `${API_URL}${p.url}` : null);
+          if (!src) return null;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setLightbox(src)}
+              className="relative aspect-square rounded-md overflow-hidden border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt={p.caption || "Inspection photo"} className="w-full h-full object-cover" />
+              {p.distance_from_site_m != null && (
+                <span className="absolute bottom-0.5 right-1 text-[9px] text-white/80 drop-shadow">
+                  {Math.round(p.distance_from_site_m)}m
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => setLightbox(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox}
+            alt="Inspection photo"
+            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute top-4 right-4 text-white/80 hover:text-white"
+            onClick={() => setLightbox(null)}
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
 function FlagContent({ flag, canAssign }: { flag: FlagDetail; canAssign: boolean }) {
   const sev = flag.severity as Severity;
   const status = flag.status as FlagStatus;
@@ -363,20 +418,35 @@ function FlagContent({ flag, canAssign }: { flag: FlagDetail; canAssign: boolean
           <section className="space-y-3">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Inspections</h3>
             <div className="space-y-2">
-              {flag.inspections.map((ins) => (
-                <div key={ins.id} className="rounded-md border bg-muted/30 p-3 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold capitalize">{ins.verdict.replace(/_/g, " ")}</span>
-                    <span className="text-[10px] text-muted-foreground">{ins.inspector_name}</span>
+              {flag.inspections.map((ins) => {
+                const insPhotos = (flag.photos ?? []).filter((p) => p.inspection_id === ins.id);
+                return (
+                  <div key={ins.id} className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold capitalize">{ins.verdict.replace(/_/g, " ")}</span>
+                      <span className="text-[10px] text-muted-foreground">{ins.inspector_name}</span>
+                    </div>
+                    {ins.notes && <p className="text-xs text-muted-foreground italic">"{ins.notes}"</p>}
+                    <div className="flex gap-3 text-[10px] text-muted-foreground">
+                      {ins.construction_stage && <span>Stage: {ins.construction_stage}</span>}
+                      {ins.estimated_floors != null && <span>{ins.estimated_floors} floor{ins.estimated_floors !== 1 ? "s" : ""}</span>}
+                      {ins.visited_at && <span>Visited {format(new Date(ins.visited_at), "d MMM yyyy")}</span>}
+                    </div>
+                    {(ins.inspector_location_name || ins.distance_to_site_m != null) && (
+                      <div className="flex gap-3 text-[10px] text-muted-foreground">
+                        {ins.inspector_location_name && <span>📍 {ins.inspector_location_name}</span>}
+                        {ins.distance_to_site_m != null && (
+                          <span>{Math.round(ins.distance_to_site_m)}m from site</span>
+                        )}
+                        {ins.inspector_accuracy_m != null && (
+                          <span>±{Math.round(ins.inspector_accuracy_m)}m accuracy</span>
+                        )}
+                      </div>
+                    )}
+                    <InspectionPhotoGrid photos={insPhotos} />
                   </div>
-                  {ins.notes && <p className="text-xs text-muted-foreground italic">"{ins.notes}"</p>}
-                  <div className="flex gap-3 text-[10px] text-muted-foreground">
-                    {ins.construction_stage && <span>Stage: {ins.construction_stage}</span>}
-                    {ins.estimated_floors != null && <span>{ins.estimated_floors} floor{ins.estimated_floors !== 1 ? "s" : ""}</span>}
-                    {ins.visited_at && <span>Visited {format(new Date(ins.visited_at), "d MMM yyyy")}</span>}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
           <Separator />

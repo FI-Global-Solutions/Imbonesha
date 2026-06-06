@@ -61,6 +61,19 @@ export interface InspectorRef {
   district: string;
 }
 
+export interface InspectionPhoto {
+  id: string;
+  inspection_id: number | null;
+  url: string | null;
+  caption: string;
+  latitude: number;
+  longitude: number;
+  accuracy_meters: number | null;
+  captured_at: string;
+  distance_from_site_m: number | null;
+  uploaded_at: string;
+}
+
 export interface Inspection {
   id: number;
   verdict: string;
@@ -71,6 +84,11 @@ export interface Inspection {
   visited_at: string | null;
   submitted_at: string;
   inspector_name: string;
+  inspector_lat: number | null;
+  inspector_lng: number | null;
+  inspector_accuracy_m: number | null;
+  inspector_location_name: string;
+  distance_to_site_m: number | null;
 }
 
 export interface AuditLog {
@@ -117,6 +135,7 @@ export interface FlagDetail extends FlagListItem {
   inspections: Inspection[];
   audit_logs: AuditLog[];
   available_transitions: string[];
+  photos: InspectionPhoto[];
 }
 
 export interface FlagImagery {
