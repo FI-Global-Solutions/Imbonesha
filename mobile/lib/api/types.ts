@@ -112,6 +112,11 @@ export interface SubmitInspectionPayload {
   occupancy_observed: boolean;
   visited_at: string;
   photo_ids: string[];
+  inspector_lat: number | null;
+  inspector_lng: number | null;
+  inspector_accuracy_m: number | null;
+  inspector_location_name: string;
+  distance_to_site_m: number | null;
 }
 
 export interface FlagImagery {

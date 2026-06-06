@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useFlag, useFlagImagery, useSubmitInspection, useUploadPhoto } from '../lib/api/hooks';
-import GPSIndicator from '../components/GPSIndicator';
+import GPSIndicator, { type GPSReading } from '../components/GPSIndicator';
 import PermitStatusBlock from '../components/PermitStatusBlock';
 import SeverityBadge from '../components/SeverityBadge';
 import VerdictPicker from '../components/VerdictPicker';
@@ -43,6 +43,7 @@ export default function InspectionScreen() {
   // Local photo state — uri is always available for immediate preview.
   // serverId is set once the upload completes; only uploaded photos are sent on submit.
   const [localPhotos, setLocalPhotos] = useState<LocalPhoto[]>([]);
+  const [gpsReading, setGpsReading] = useState<GPSReading | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const notesRef = useRef<View>(null);
 
@@ -106,6 +107,11 @@ export default function InspectionScreen() {
           occupancy_observed: occupancy,
           visited_at: new Date().toISOString(),
           photo_ids: uploadedIds,
+          inspector_lat: gpsReading?.lat ?? null,
+          inspector_lng: gpsReading?.lng ?? null,
+          inspector_accuracy_m: gpsReading?.accuracyM ?? null,
+          inspector_location_name: gpsReading?.locationName ?? '',
+          distance_to_site_m: gpsReading?.distanceM ?? null,
         },
       });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -174,7 +180,7 @@ export default function InspectionScreen() {
         {/* GPS */}
         <View style={[styles.section, { borderBottomColor: c.border }]}>
           <Text style={[styles.sectionTitle, { color: c.muted }]}>Your Location</Text>
-          <GPSIndicator siteLat={centroidLat} siteLng={centroidLng} />
+          <GPSIndicator siteLat={centroidLat} siteLng={centroidLng} onReading={setGpsReading} />
         </View>
 
         {/* Imagery */}

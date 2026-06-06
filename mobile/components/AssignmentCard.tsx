@@ -21,7 +21,9 @@ function permitIcon(status: string | null, primaryColor: string, mutedColor: str
 export default function AssignmentCard({ flag, onPress }: Props) {
   const c = useTheme();
   const severityColor = c.severity[flag.severity] ?? c.muted;
-  const relativeTime = formatDistanceToNow(new Date(flag.created_at), { addSuffix: true });
+  const relativeTime = formatDistanceToNow(
+    new Date(flag.assigned_at ?? flag.created_at), { addSuffix: true }
+  );
   const permit = permitIcon(flag.permit_status, c.primary, c.muted, c.severity.critical, c.severity.medium);
 
   return (

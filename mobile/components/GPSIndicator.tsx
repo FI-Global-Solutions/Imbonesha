@@ -4,9 +4,18 @@ import * as Location from 'expo-location';
 import { useTheme } from '../lib/theme';
 import { distanceMeters, gpsStatusColor } from '../lib/location';
 
+export interface GPSReading {
+  lat: number;
+  lng: number;
+  accuracyM: number | null;
+  distanceM: number | null;
+  locationName: string | null;
+}
+
 interface Props {
   siteLat: number | null;
   siteLng: number | null;
+  onReading?: (reading: GPSReading) => void;
 }
 
 interface GPSState {
@@ -17,7 +26,7 @@ interface GPSState {
   locationName: string | null;
 }
 
-export default function GPSIndicator({ siteLat, siteLng }: Props) {
+export default function GPSIndicator({ siteLat, siteLng, onReading }: Props) {
   const c = useTheme();
   const [gps, setGps] = useState<GPSState>({
     distanceM: null, accuracyM: null, acquiring: true, permissionDenied: false, locationName: null,
@@ -54,7 +63,9 @@ export default function GPSIndicator({ siteLat, siteLng }: Props) {
           // Geocoding failed silently — distance still shows
         }
 
-        setGps({ distanceM: dist, accuracyM: accuracy, acquiring: false, permissionDenied: false, locationName });
+        const next: GPSState = { distanceM: dist, accuracyM: accuracy, acquiring: false, permissionDenied: false, locationName };
+        setGps(next);
+        onReading?.({ lat: latitude, lng: longitude, accuracyM: accuracy, distanceM: dist, locationName });
       },
     );
   }, [siteLat, siteLng]);
