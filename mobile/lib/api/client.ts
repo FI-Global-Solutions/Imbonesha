@@ -7,7 +7,7 @@ function getApiBase(): string {
     const host = Constants.expoConfig?.hostUri?.split(':')[0] ?? 'localhost';
     return `http://${host}:8007/api/v1`;
   }
-  return 'https://api.imbonesha.gov.rw/api/v1';
+  return 'https://imbonesha-api.onrender.com/api/v1';
 }
 
 export const API_BASE = getApiBase();

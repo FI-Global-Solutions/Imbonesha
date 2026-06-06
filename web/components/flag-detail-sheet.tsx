@@ -31,17 +31,44 @@ function authedImageUrl(url: string | null | undefined): string | null {
   return `${url}${sep}token=${encodeURIComponent(decodeURIComponent(token))}`;
 }
 
-function PermitBlock({ flag }: { flag: FlagDetail }) {
-  const p = flag.parcel?.active_permit;
-  const permitStatus = flag.permit_status;
+function ConfidenceRing({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
+  const r = 26;
+  const circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
+  const color = pct >= 75 ? "#22c55e" : pct >= 50 ? "#f59e0b" : "#ef4444";
 
-  if (p) {
+  return (
+    <div className="relative shrink-0 flex items-center justify-center" style={{ width: 72, height: 72 }}>
+      <svg width="72" height="72" className="-rotate-90">
+        <circle cx="36" cy="36" r={r} fill="none" stroke="currentColor" strokeWidth="4" className="text-muted/60" />
+        <circle
+          cx="36" cy="36" r={r} fill="none"
+          stroke={color} strokeWidth="4"
+          strokeDasharray={`${dash} ${circ}`}
+          strokeLinecap="round"
+          style={{ transition: "stroke-dasharray 0.6s ease" }}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-base font-black tabular-nums leading-none" style={{ color }}>{pct}%</span>
+        <span className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/50 mt-0.5">conf.</span>
+      </div>
+    </div>
+  );
+}
+
+function PermitBlock({ flag }: { flag: FlagDetail }) {
+  const permitStatus = flag.permit_status;
+  const p = flag.parcel?.active_permit;
+
+  if (permitStatus === "active") {
     return (
       <div className="rounded-md border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950 p-4 space-y-1">
         <p className="text-sm font-semibold text-green-700 dark:text-green-400">Active permit</p>
-        <p className="text-xs text-muted-foreground font-mono">{p.permit_no}</p>
-        <p className="text-xs text-muted-foreground">{p.get_category_display}</p>
-        {p.expiry_date && (
+        {p && <p className="text-xs text-muted-foreground font-mono">{p.permit_no}</p>}
+        {p && <p className="text-xs text-muted-foreground">{p.get_category_display}</p>}
+        {p?.expiry_date && (
           <p className="text-xs text-muted-foreground">
             Expires {format(new Date(p.expiry_date), "d MMM yyyy")}
           </p>
@@ -80,7 +107,7 @@ function ImageComparison({ flagId }: { flagId: number }) {
   const { data, isLoading } = useFlagImagery(flagId);
 
   if (isLoading) {
-    return <Skeleton className="w-full h-70 rounded-md" />;
+    return <Skeleton className="w-full h-96 rounded-md" />;
   }
 
   const t1 = authedImageUrl(data?.t1_url);
@@ -88,28 +115,28 @@ function ImageComparison({ flagId }: { flagId: number }) {
 
   if (!t1 || !t2) {
     return (
-      <div className="w-full h-70 rounded-md bg-muted flex items-center justify-center">
+      <div className="w-full h-96 rounded-md bg-muted flex items-center justify-center">
         <p className="text-sm text-muted-foreground">Imagery not available</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-md overflow-hidden border">
+    <div className="rounded-md overflow-hidden border bg-black">
       <ReactCompareSlider
-        style={{ height: 280 }}  /* 280px = h-70 in Tailwind */
+        style={{ height: 420 }}
         itemOne={
           <ReactCompareSliderImage
             src={t1}
             alt="Before (T1)"
-            style={{ objectFit: "cover" }}
+            style={{ objectFit: "contain", background: "#000" }}
           />
         }
         itemTwo={
           <ReactCompareSliderImage
             src={t2}
             alt="After (T2)"
-            style={{ objectFit: "cover" }}
+            style={{ objectFit: "contain", background: "#000" }}
           />
         }
       />
@@ -297,23 +324,23 @@ function FlagContent({ flag, canAssign }: { flag: FlagDetail; canAssign: boolean
 
       {/* Detection details */}
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Detection</h3>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          <div>
-            <p className="text-xs text-muted-foreground">Confidence</p>
-            <p className="font-medium">{Math.round((flag.detection?.confidence ?? 0) * 100)}%</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Footprint</p>
-            <p className="font-medium">{Math.round(flag.detection?.area_sqm ?? 0)} m²</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Change type</p>
-            <p className="font-medium capitalize">{flag.detection?.change_type?.replace(/_/g, " ")}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Flagged</p>
-            <p className="font-medium">{format(new Date(flag.created_at), "d MMM yyyy")}</p>
+        <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Detection</h3>
+        <div className="flex items-center gap-4">
+          {/* Confidence ring */}
+          <ConfidenceRing value={flag.detection?.confidence ?? 0} />
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 flex-1 text-sm">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Footprint</p>
+              <p className="font-semibold text-sm mt-0.5">{Math.round(flag.detection?.area_sqm ?? 0)} m²</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Change type</p>
+              <p className="font-semibold text-sm mt-0.5 capitalize">{flag.detection?.change_type?.replace(/_/g, " ")}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Flagged</p>
+              <p className="font-semibold text-sm mt-0.5">{format(new Date(flag.created_at), "d MMM yyyy")}</p>
+            </div>
           </div>
         </div>
       </section>
@@ -393,7 +420,7 @@ export function FlagDetailSheet() {
       <SheetContent
         side="right"
         showCloseButton={false}
-        className="w-full sm:w-120 sm:max-w-120 p-0 flex flex-col"
+        className="w-full sm:w-[680px] sm:max-w-[680px] p-0 flex flex-col"
       >
         <SheetHeader className="px-6 py-4 border-b shrink-0 flex-row items-center justify-between space-y-0">
           <h2 className="text-base font-semibold">Flag detail</h2>

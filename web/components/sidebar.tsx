@@ -24,28 +24,25 @@ const INSPECTOR_NAV = [
 function LogoMark({ collapsed }: { collapsed: boolean }) {
   return (
     <div className={cn(
-      "flex flex-col items-center justify-center gap-1.5 border-b border-border/60 shrink-0 py-4",
-      collapsed ? "h-14" : "h-24"
+      "flex items-center gap-3 border-b border-border/50 shrink-0 px-4",
+      collapsed ? "h-14 justify-center" : "h-16"
     )}>
-      <div className={cn(
-        "rounded-xl bg-primary/10 flex items-center justify-center shrink-0 overflow-hidden transition-all duration-200",
-        collapsed ? "h-8 w-8" : "h-12 w-12"
-      )}>
+      <div className="rounded-xl bg-primary/15 flex items-center justify-center shrink-0 h-8 w-8 ring-1 ring-primary/20">
         <Image
           src="/logo.png"
           alt="Imbonesha"
-          width={collapsed ? 26 : 40}
-          height={collapsed ? 26 : 40}
+          width={20}
+          height={20}
           className="object-contain"
           priority
         />
       </div>
       {!collapsed && (
-        <div className="flex flex-col items-center min-w-0">
-          <span className="font-bold text-[13px] tracking-tight text-foreground leading-none">
+        <div className="flex flex-col min-w-0">
+          <span className="font-bold text-[14px] tracking-tight text-foreground leading-none">
             Imbonesha
           </span>
-          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50 leading-none mt-1">
+          <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground/50 leading-none mt-1">
             RHA · Change Detection
           </span>
         </div>
@@ -61,7 +58,6 @@ export function Sidebar() {
   const isInspector = me?.role === "inspector";
   const NAV = isInspector ? INSPECTOR_NAV : ADMIN_NAV;
 
-  // Pending badge: pending flags for admin, assigned flags for inspector
   const { data: pendingData } = useFlags({
     limit: 1,
     status: isInspector ? "assigned" : "pending",
@@ -82,12 +78,12 @@ export function Sidebar() {
 
   return (
     <aside className={cn(
-      "h-full flex flex-col border-r border-border bg-background/95 transition-[width] duration-200 shrink-0",
-      collapsed ? "w-[60px]" : "w-[224px]"
+      "h-full flex flex-col border-r border-border/50 bg-sidebar transition-[width] duration-200 shrink-0",
+      collapsed ? "w-[60px]" : "w-[220px]"
     )}>
       <LogoMark collapsed={collapsed} />
 
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
         {NAV.map(({ href, label, icon: Icon, showBadge }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
@@ -96,15 +92,18 @@ export function Sidebar() {
               href={href}
               title={collapsed ? label : undefined}
               className={cn(
-                "group flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-sm font-medium transition-all duration-150",
+                "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-150",
                 active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  ? "bg-primary/12 text-primary"
+                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
               )}
             >
+              {active && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-primary" />
+              )}
               <Icon className={cn(
                 "h-4 w-4 shrink-0 transition-colors",
-                active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"
               )} />
               {!collapsed && (
                 <span className="flex-1 truncate">{label}</span>
@@ -124,13 +123,13 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="px-2 py-3 border-t border-border/60">
+      <div className="px-2 py-3 border-t border-border/50">
         <button
           type="button"
           onClick={toggle}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className={cn(
-            "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors",
+            "flex items-center gap-3 w-full rounded-lg px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors",
             collapsed && "justify-center"
           )}
         >

@@ -22,6 +22,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .config import settings
 from .preprocessing import prepare_pair
@@ -112,6 +113,76 @@ class SiameseUNet(nn.Module):
 
 
 # ---------------------------------------------------------------------------
+# ResNet-50 Siamese U-Net (v5) — pretrained backbone
+# ---------------------------------------------------------------------------
+
+
+class _DecoderBlock(nn.Module):
+    def __init__(self, in_ch: int, skip_ch: int, out_ch: int) -> None:
+        super().__init__()
+        self.up = nn.ConvTranspose2d(in_ch, out_ch, kernel_size=2, stride=2)
+        self.conv = nn.Sequential(
+            nn.Conv2d(out_ch + skip_ch, out_ch, 3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch), nn.ReLU(inplace=True),
+            nn.Conv2d(out_ch, out_ch, 3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch), nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
+        x = self.up(x)
+        if x.shape != skip.shape:
+            x = F.interpolate(x, size=skip.shape[2:], mode="bilinear", align_corners=False)
+        return self.conv(torch.cat([x, skip], dim=1))
+
+
+class ResNet50SiameseUNet(nn.Module):
+    """Siamese U-Net with pretrained ResNet-50 encoder (v5)."""
+
+    def __init__(self, pretrained: bool = True, dropout: float = 0.0) -> None:
+        super().__init__()
+        from torchvision import models
+        weights = models.ResNet50_Weights.IMAGENET1K_V1 if pretrained else None
+        backbone = models.resnet50(weights=weights)
+        self.enc0 = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu)
+        self.pool = backbone.maxpool
+        self.enc1 = backbone.layer1
+        self.enc2 = backbone.layer2
+        self.enc3 = backbone.layer3
+        self.enc4 = backbone.layer4
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(2048, 512, 1, bias=False), nn.BatchNorm2d(512), nn.ReLU(inplace=True),
+        )
+        self.dec4 = _DecoderBlock(512, 1024, 256)
+        self.dec3 = _DecoderBlock(256, 512, 128)
+        self.dec2 = _DecoderBlock(128, 256, 64)
+        self.dec1 = _DecoderBlock(64, 64, 32)
+        self.drop = nn.Dropout2d(dropout) if dropout > 0 else nn.Identity()
+        self.head = nn.Sequential(
+            nn.ConvTranspose2d(32, 16, kernel_size=2, stride=2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 1, 1),
+        )
+
+    def _encode(self, x: torch.Tensor):
+        e0 = self.enc0(x)
+        e1 = self.enc1(self.pool(e0))
+        e2 = self.enc2(e1)
+        e3 = self.enc3(e2)
+        e4 = self.enc4(e3)
+        return e0, e1, e2, e3, e4
+
+    def forward(self, t1: torch.Tensor, t2: torch.Tensor) -> torch.Tensor:
+        t1_e0, t1_e1, t1_e2, t1_e3, t1_e4 = self._encode(t1)
+        t2_e0, t2_e1, t2_e2, t2_e3, t2_e4 = self._encode(t2)
+        b  = self.bottleneck(torch.abs(t1_e4 - t2_e4))
+        d4 = self.dec4(b,  torch.abs(t1_e3 - t2_e3))
+        d3 = self.dec3(d4, torch.abs(t1_e2 - t2_e2))
+        d2 = self.dec2(d3, torch.abs(t1_e1 - t2_e1))
+        d1 = self.dec1(d2, torch.abs(t1_e0 - t2_e0))
+        return self.head(self.drop(d1))
+
+
+# ---------------------------------------------------------------------------
 # Detector
 # ---------------------------------------------------------------------------
 
@@ -129,7 +200,11 @@ class ChangeDetector:
         self.threshold = threshold or settings.detection_threshold
         self.device = torch.device(device or _pick_device())
 
-        self.model = SiameseUNet(base_ch=32).to(self.device)
+        cp = str(self.checkpoint_path)
+        if "resnet" in cp or "v5" in cp or "v7" in cp:
+            self.model = ResNet50SiameseUNet(pretrained=False).to(self.device)
+        else:
+            self.model = SiameseUNet(base_ch=32).to(self.device)
         self._loaded = False
         self._load_checkpoint()
 

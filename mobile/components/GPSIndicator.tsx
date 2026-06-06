@@ -14,12 +14,13 @@ interface GPSState {
   accuracyM: number | null;
   acquiring: boolean;
   permissionDenied: boolean;
+  locationName: string | null;
 }
 
 export default function GPSIndicator({ siteLat, siteLng }: Props) {
   const c = useTheme();
   const [gps, setGps] = useState<GPSState>({
-    distanceM: null, accuracyM: null, acquiring: true, permissionDenied: false,
+    distanceM: null, accuracyM: null, acquiring: true, permissionDenied: false, locationName: null,
   });
   const watchRef = useRef<Location.LocationSubscription | null>(null);
 
@@ -31,12 +32,29 @@ export default function GPSIndicator({ siteLat, siteLng }: Props) {
     }
     watchRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 5 },
-      (loc) => {
+      async (loc) => {
         const { latitude, longitude, accuracy } = loc.coords;
         const dist = siteLat != null && siteLng != null
           ? distanceMeters(latitude, longitude, siteLat, siteLng)
           : null;
-        setGps({ distanceM: dist, accuracyM: accuracy, acquiring: false, permissionDenied: false });
+
+        // Reverse geocode to get human-readable location name
+        let locationName: string | null = null;
+        try {
+          const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
+          if (place) {
+            const parts = [
+              place.street,
+              place.district || place.subregion,
+              place.city || place.region,
+            ].filter(Boolean);
+            locationName = parts.slice(0, 2).join(', ') || null;
+          }
+        } catch {
+          // Geocoding failed silently — distance still shows
+        }
+
+        setGps({ distanceM: dist, accuracyM: accuracy, acquiring: false, permissionDenied: false, locationName });
       },
     );
   }, [siteLat, siteLng]);
@@ -71,6 +89,9 @@ export default function GPSIndicator({ siteLat, siteLng }: Props) {
   return (
     <View style={[styles.container, { backgroundColor: bgColor, borderColor: color + '40' }]}>
       <Text style={[styles.main, { color }]}>📍 You are {distText} from the site</Text>
+      {gps.locationName != null && (
+        <Text style={[styles.sub, { color: c.muted }]}>📌 {gps.locationName}</Text>
+      )}
       {gps.accuracyM != null && (
         <Text style={[styles.sub, { color: c.muted }]}>GPS accuracy: ±{Math.round(gps.accuracyM)}m</Text>
       )}

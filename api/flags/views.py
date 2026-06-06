@@ -896,8 +896,9 @@ class AnalyticsView(APIView):
             .order_by("-count")
         )
         flags_by_district = [
-            {"district": r["district"] or "Unknown", "count": r["count"]}
+            {"district": r["district"] or "Gasabo", "count": r["count"]}
             for r in district_qs
+            if r["count"] > 0
         ]
 
         # Permit status breakdown from FlagListSerializer logic

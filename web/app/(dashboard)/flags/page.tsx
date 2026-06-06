@@ -470,20 +470,24 @@ export default function FlagsPage() {
                         </TableCell>
                       </TableRow>
                     )
-                    : table.getRowModel().rows.map((row) => (
-                      <TableRow
-                        key={row.id}
-                        className="group/row cursor-pointer hover:bg-accent/40"
-                        onClick={() => openDrawer(row.original.id)}
-                        data-state={row.getIsSelected() ? "selected" : undefined}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id} className="py-2.5">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
+                    : table.getRowModel().rows.map((row) => {
+                      const sev = row.original.severity;
+                      const stripeColor = sev === "critical" ? "before:bg-red-500" : sev === "high" ? "before:bg-orange-500" : sev === "medium" ? "before:bg-yellow-500" : "before:bg-slate-400/40";
+                      return (
+                        <TableRow
+                          key={row.id}
+                          className={`group/row cursor-pointer hover:bg-accent/40 relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-[3px] before:h-[60%] before:rounded-r-full before:opacity-70 ${stripeColor}`}
+                          onClick={() => openDrawer(row.original.id)}
+                          data-state={row.getIsSelected() ? "selected" : undefined}
+                        >
+                          {row.getVisibleCells().map((cell) => (
+                            <TableCell key={cell.id} className="py-2.5">
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      );
+                    })
                 }
               </TableBody>
             </Table>
