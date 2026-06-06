@@ -6,7 +6,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from accounts.views import MeView, PushTokenView
+from accounts.views import MeView, PushTokenView, InspectorListView, InspectorToggleActiveView
 from detections.views import DetectionJobViewSet
 from flags.views import AnalyticsView, FlagViewSet, InspectorWorkloadView, ReportViewSet
 from imagery.views import AOIViewSet
@@ -38,6 +38,8 @@ urlpatterns = [
     path("api/v1/me/", MeView.as_view(), name="me"),
     path("api/v1/me/push-token/", PushTokenView.as_view(), name="push-token"),
     path("api/v1/analytics/summary/", AnalyticsView.as_view(), name="analytics-summary"),
+    path("api/v1/inspectors/", InspectorListView.as_view(), name="inspector-list"),
+    path("api/v1/inspectors/<int:pk>/toggle-active/", InspectorToggleActiveView.as_view(), name="inspector-toggle-active"),
     path("api/v1/inspectors/workload/", InspectorWorkloadView.as_view(), name="inspector-workload"),
     path("api/v1/notifications/", NotificationListView.as_view(), name="notification-list"),
     path("api/v1/notifications/unread-count/", NotificationUnreadCountView.as_view(), name="notification-unread-count"),

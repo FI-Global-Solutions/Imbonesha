@@ -4,15 +4,16 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Map, TableProperties, BarChart3, FileText, PanelLeftClose, PanelLeftOpen, ClipboardList } from "lucide-react";
+import { Map, TableProperties, BarChart3, FileText, PanelLeftClose, PanelLeftOpen, ClipboardList, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFlags, useMe } from "@/lib/api/hooks";
 
 const ADMIN_NAV = [
-  { href: "/",            label: "Map",            icon: Map },
-  { href: "/flags",       label: "Flags",          icon: TableProperties, showBadge: true },
-  { href: "/analytics",   label: "Analytics",      icon: BarChart3 },
-  { href: "/reports",     label: "Reports",        icon: FileText },
+  { href: "/",             label: "Map",            icon: Map },
+  { href: "/flags",        label: "Flags",          icon: TableProperties, showBadge: true },
+  { href: "/analytics",    label: "Analytics",      icon: BarChart3 },
+  { href: "/reports",      label: "Reports",        icon: FileText },
+  { href: "/inspectors",   label: "Inspectors",     icon: Users },
 ];
 
 const INSPECTOR_NAV = [

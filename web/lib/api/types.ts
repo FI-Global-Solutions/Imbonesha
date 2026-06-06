@@ -101,6 +101,17 @@ export interface AuditLog {
   timestamp: string;
 }
 
+export interface Inspector {
+  id: number;
+  email: string;
+  full_name: string;
+  first_name: string;
+  last_name: string;
+  district: string;
+  phone_number: string;
+  is_active: boolean;
+}
+
 export interface InspectorWorkload {
   inspector_id: number;
   name: string;

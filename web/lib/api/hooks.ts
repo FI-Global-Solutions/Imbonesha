@@ -3,7 +3,7 @@ import { apiClient } from "./client";
 import type {
   User, FlagListItem, FlagDetail, FlagImagery,
   PaginatedResponse, DetectionJob, Report, AnalyticsSummary,
-  InspectorWorkload, WebNotification, NotificationListResponse,
+  InspectorWorkload, Inspector, WebNotification, NotificationListResponse,
 } from "./types";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -93,6 +93,25 @@ export function useBulkAssignFlags() {
       apiClient.post("/flags/bulk-assign/", payload).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["flags"] });
+      qc.invalidateQueries({ queryKey: ["inspector-workload"] });
+    },
+  });
+}
+
+export function useInspectors() {
+  return useQuery<Inspector[]>({
+    queryKey: ["inspectors"],
+    queryFn: () => apiClient.get("/inspectors/").then((r) => r.data),
+    staleTime: 30_000,
+  });
+}
+
+export function useToggleInspectorActive() {
+  const qc = useQueryClient();
+  return useMutation<Inspector, Error, number>({
+    mutationFn: (id) => apiClient.patch(`/inspectors/${id}/toggle-active/`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inspectors"] });
       qc.invalidateQueries({ queryKey: ["inspector-workload"] });
     },
   });
