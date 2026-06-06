@@ -3,7 +3,7 @@ import { apiClient } from "./client";
 import type {
   User, FlagListItem, FlagDetail, FlagImagery,
   PaginatedResponse, DetectionJob, Report, AnalyticsSummary,
-  InspectorWorkload,
+  InspectorWorkload, WebNotification, NotificationListResponse,
 } from "./types";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -209,6 +209,48 @@ export function useDeleteFlags() {
     mutationFn: (ids) => apiClient.delete("/flags/bulk-delete/", { data: { ids } }).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["flags"] });
+    },
+  });
+}
+
+// ── Notifications (web) ───────────────────────────────────────────────────────
+
+export function useWebNotifications() {
+  return useQuery<NotificationListResponse>({
+    queryKey: ["web-notifications"],
+    queryFn: () => apiClient.get("/notifications/", { params: { limit: 20 } }).then((r) => r.data),
+    refetchInterval: 30_000,
+    staleTime: 20_000,
+  });
+}
+
+export function useUnreadNotificationCount() {
+  return useQuery<{ count: number }>({
+    queryKey: ["web-notifications-unread"],
+    queryFn: () => apiClient.get("/notifications/unread-count/").then((r) => r.data),
+    refetchInterval: 30_000,
+    staleTime: 20_000,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => apiClient.patch(`/notifications/${id}/read/`).then(() => {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["web-notifications"] });
+      qc.invalidateQueries({ queryKey: ["web-notifications-unread"] });
+    },
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, void>({
+    mutationFn: () => apiClient.post("/notifications/mark-all-read/").then(() => {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["web-notifications"] });
+      qc.invalidateQueries({ queryKey: ["web-notifications-unread"] });
     },
   });
 }

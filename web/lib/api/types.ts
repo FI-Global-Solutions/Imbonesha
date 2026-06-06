@@ -145,6 +145,22 @@ export interface FlagImagery {
   t2_captured_at: string | null;
 }
 
+export interface WebNotification {
+  id: string;
+  title: string;
+  body: string;
+  notification_type: string;
+  related_flag_id: number | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  count: number;
+  results: WebNotification[];
+}
+
 export interface AOI {
   id: number;
   type: "Feature";

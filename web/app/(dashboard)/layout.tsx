@@ -7,6 +7,7 @@ import { getCookie } from "@/lib/api/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sidebar } from "@/components/sidebar";
 import { FlagDetailSheet } from "@/components/flag-detail-sheet";
+import { NotificationBell } from "@/components/notification-bell";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -44,10 +45,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (isError) return null;
 
+  const isInspector = user.role === "inspector";
+
   return (
     <div className="h-screen flex overflow-hidden">
       <Sidebar />
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        {!isInspector && (
+          <div className="flex justify-end items-center px-4 py-2 border-b border-border/40 shrink-0">
+            <NotificationBell />
+          </div>
+        )}
         {children}
       </main>
       <FlagDetailSheet />

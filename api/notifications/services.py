@@ -125,3 +125,14 @@ class NotificationService:
             notification_type="inspection_complete",
             related_flag_id=flag.id,
         )
+
+        # In-app notification so the web dashboard bell lights up.
+        from .models import MobileNotification
+        inspector_name = inspection.inspector.get_full_name() or inspection.inspector.email
+        MobileNotification.objects.create(
+            recipient_id=flag.assigned_by_id,
+            title=f"Inspection submitted: {parcel['upi']}",
+            body=f"{inspector_name} · {inspection.get_verdict_display()}",
+            notification_type="inspection_complete",
+            related_flag=flag,
+        )
