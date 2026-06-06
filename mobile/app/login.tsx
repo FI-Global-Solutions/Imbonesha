@@ -14,9 +14,12 @@ export default function LoginScreen() {
   const { setTokens } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpStep, setOtpStep] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const passwordRef = useRef<TextInput>(null);
+  const otpRef = useRef<TextInput>(null);
 
   async function handleLogin() {
     if (!email.trim() || !password) {
@@ -26,14 +29,27 @@ export default function LoginScreen() {
     setLoading(true);
     setError('');
     try {
-      const res = await client.post('/auth/login/', { email: email.trim(), password });
+      await client.post('/auth/login/', { email: email.trim(), password });
+      setOtpStep(true);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail ?? err?.response?.data?.non_field_errors?.[0];
+      setError(detail ?? 'Invalid credentials. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    if (otp.length !== 6) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await client.post('/auth/verify-otp/', { email: email.trim(), otp });
       await setTokens(res.data.access, res.data.refresh);
       router.replace('/(tabs)/assignments');
     } catch (err: any) {
-      const detail =
-        err?.response?.data?.detail ??
-        err?.response?.data?.non_field_errors?.[0];
-      setError(detail ?? 'Invalid credentials. Please try again.');
+      const detail = err?.response?.data?.detail;
+      setError(detail ?? 'Invalid or expired code. Try again.');
     } finally {
       setLoading(false);
     }
@@ -54,53 +70,91 @@ export default function LoginScreen() {
           <Text style={[styles.subtitle, { color: c.muted }]}>Field Inspector</Text>
         </View>
 
-        <View style={styles.form}>
-          <Text style={[styles.label, { color: c.foreground }]}>Email</Text>
-          <TextInput
-            style={[styles.input, { borderColor: c.border, color: c.foreground, backgroundColor: c.surface }]}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="inspector@imbonesha.gov.rw"
-            placeholderTextColor={c.muted}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            textContentType="emailAddress"
-            autoComplete="email"
-            returnKeyType="next"
-            onSubmitEditing={() => passwordRef.current?.focus()}
-            editable={!loading}
-          />
+        {!otpStep ? (
+          <View style={styles.form}>
+            <Text style={[styles.label, { color: c.foreground }]}>Email</Text>
+            <TextInput
+              style={[styles.input, { borderColor: c.border, color: c.foreground, backgroundColor: c.surface }]}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="inspector@imbonesha.gov.rw"
+              placeholderTextColor={c.muted}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="emailAddress"
+              autoComplete="email"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              editable={!loading}
+            />
 
-          <Text style={[styles.label, { marginTop: spacing.md, color: c.foreground }]}>Password</Text>
-          <TextInput
-            ref={passwordRef}
-            style={[styles.input, { borderColor: c.border, color: c.foreground, backgroundColor: c.surface }]}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••••••"
-            placeholderTextColor={c.muted}
-            secureTextEntry
-            textContentType="password"
-            autoComplete="password"
-            returnKeyType="done"
-            onSubmitEditing={handleLogin}
-            editable={!loading}
-          />
+            <Text style={[styles.label, { marginTop: spacing.md, color: c.foreground }]}>Password</Text>
+            <TextInput
+              ref={passwordRef}
+              style={[styles.input, { borderColor: c.border, color: c.foreground, backgroundColor: c.surface }]}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="••••••••••••"
+              placeholderTextColor={c.muted}
+              secureTextEntry
+              textContentType="password"
+              autoComplete="password"
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+              editable={!loading}
+            />
 
-          <TouchableOpacity
-            style={[styles.btn, { backgroundColor: c.primary }, loading && styles.btnActive]}
-            onPress={handleLogin}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.btnText}>Sign in</Text>}
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, { backgroundColor: c.primary }, loading && styles.btnActive]}
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Continue</Text>}
+            </TouchableOpacity>
 
-          {error ? <Text style={[styles.error, { color: c.severity.critical }]}>{error}</Text> : null}
-        </View>
+            {error ? <Text style={[styles.error, { color: c.severity.critical }]}>{error}</Text> : null}
+          </View>
+        ) : (
+          <View style={styles.form}>
+            <Text style={[styles.otpHint, { color: c.muted }]}>
+              Enter the 6-digit code sent to {email}
+            </Text>
+
+            <Text style={[styles.label, { marginTop: spacing.md, color: c.foreground }]}>Login code</Text>
+            <TextInput
+              ref={otpRef}
+              style={[styles.input, styles.otpInput, { borderColor: c.border, color: c.foreground, backgroundColor: c.surface }]}
+              value={otp}
+              onChangeText={(t) => setOtp(t.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              placeholderTextColor={c.muted}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              autoComplete="one-time-code"
+              returnKeyType="done"
+              onSubmitEditing={handleVerifyOtp}
+              editable={!loading}
+              autoFocus
+            />
+
+            <TouchableOpacity
+              style={[styles.btn, { backgroundColor: c.primary }, (loading || otp.length !== 6) && styles.btnActive]}
+              onPress={handleVerifyOtp}
+              disabled={loading || otp.length !== 6}
+              activeOpacity={0.85}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Verify &amp; sign in</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => { setOtpStep(false); setOtp(''); setError(''); }} style={styles.backBtn}>
+              <Text style={[styles.backText, { color: c.muted }]}>← Back to sign in</Text>
+            </TouchableOpacity>
+
+            {error ? <Text style={[styles.error, { color: c.severity.critical }]}>{error}</Text> : null}
+          </View>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -125,4 +179,8 @@ const styles = StyleSheet.create({
   btnActive: { opacity: 0.85 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   error: { marginTop: 16, fontSize: 13, textAlign: 'center' },
+  otpHint: { fontSize: 14, textAlign: 'center', marginBottom: 4 },
+  otpInput: { textAlign: 'center', fontSize: 28, fontWeight: '700', letterSpacing: 12 },
+  backBtn: { marginTop: 16, alignItems: 'center' },
+  backText: { fontSize: 13 },
 });

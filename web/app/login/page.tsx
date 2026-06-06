@@ -54,6 +54,9 @@ export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [otpStep, setOtpStep] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [otp, setOtp] = useState("");
 
   const {
     register,
@@ -66,16 +69,37 @@ export default function LoginPage() {
   const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
-      const res = await axios.post(`${API_URL}/api/v1/auth/login/`, {
+      await axios.post(`${API_URL}/api/v1/auth/login/`, {
         email: data.email,
         password: data.password,
+      });
+      setPendingEmail(data.email);
+      setOtpStep(true);
+      toast.success("Code sent", { description: `Check ${data.email} for your 6-digit login code.` });
+    } catch {
+      toast.error("Invalid credentials", {
+        description: "Check your email and password and try again.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp.length !== 6) return;
+    setLoading(true);
+    try {
+      const res = await axios.post(`${API_URL}/api/v1/auth/verify-otp/`, {
+        email: pendingEmail,
+        otp,
       });
       setCookie("access_token", res.data.access, 60 * 60 * 8);
       setCookie("refresh_token", res.data.refresh, 60 * 60 * 24 * 7);
       router.push("/");
     } catch {
-      toast.error("Invalid credentials", {
-        description: "Check your email and password and try again.",
+      toast.error("Invalid or expired code", {
+        description: "Double-check the code or go back to request a new one.",
       });
     } finally {
       setLoading(false);
@@ -193,87 +217,82 @@ export default function LoginPage() {
         </div>
 
         <div className="w-full max-w-[380px]">
-          {/* Heading */}
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
-            <p className="text-muted-foreground text-sm mt-1.5">
-              Sign in to your RHA monitoring account
-            </p>
-          </div>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            {/* Email */}
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-sm font-medium">
-                Email address
-              </Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@rha.gov.rw"
-                  autoComplete="email"
-                  className="pl-9 h-11"
-                  {...register("email")}
-                />
-              </div>
-              {errors.email && (
-                <p className="text-xs text-destructive">
-                  {errors.email.message}
+          {!otpStep ? (
+            <>
+              {/* Heading */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
+                <p className="text-muted-foreground text-sm mt-1.5">
+                  Sign in to your RHA monitoring account
                 </p>
-              )}
-            </div>
+              </div>
 
-            {/* Password */}
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-sm font-medium">
-                Password
-              </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  className="pl-9 pr-16 h-11"
-                  {...register("password")}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPassword ? "Hide" : "Show"}
+              {/* Credentials form */}
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                <div className="space-y-1.5">
+                  <Label htmlFor="email" className="text-sm font-medium">Email address</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <Input id="email" type="email" placeholder="you@rha.gov.rw" autoComplete="email" className="pl-9 h-11" {...register("email")} />
+                  </div>
+                  {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <Input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" className="pl-9 pr-16 h-11" {...register("password")} />
+                    <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                      {showPassword ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+                </div>
+
+                <Button type="submit" className="w-full h-11 text-sm font-semibold gap-2 mt-2" disabled={loading}>
+                  {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Sending code…</> : <>Continue<ArrowRight className="h-4 w-4" /></>}
+                </Button>
+              </form>
+            </>
+          ) : (
+            <>
+              {/* OTP step */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold tracking-tight">Check your email</h2>
+                <p className="text-muted-foreground text-sm mt-1.5">
+                  We sent a 6-digit code to <span className="font-medium text-foreground">{pendingEmail}</span>
+                </p>
+              </div>
+
+              <form onSubmit={onVerifyOtp} className="space-y-5">
+                <div className="space-y-1.5">
+                  <Label htmlFor="otp" className="text-sm font-medium">Login code</Label>
+                  <Input
+                    id="otp"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="000000"
+                    autoComplete="one-time-code"
+                    className="h-11 text-center text-xl font-mono tracking-[0.4em]"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-muted-foreground">Code expires in 10 minutes.</p>
+                </div>
+
+                <Button type="submit" className="w-full h-11 text-sm font-semibold gap-2" disabled={loading || otp.length !== 6}>
+                  {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Verifying…</> : <>Verify &amp; sign in<ArrowRight className="h-4 w-4" /></>}
+                </Button>
+
+                <button type="button" onClick={() => { setOtpStep(false); setOtp(""); }} className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors text-center">
+                  ← Back to sign in
                 </button>
-              </div>
-              {errors.password && (
-                <p className="text-xs text-destructive">
-                  {errors.password.message}
-                </p>
-              )}
-            </div>
-
-            {/* Submit */}
-            <Button
-              type="submit"
-              className="w-full h-11 text-sm font-semibold gap-2 mt-2"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Signing in…
-                </>
-              ) : (
-                <>
-                  Sign in
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </Button>
-          </form>
+              </form>
+            </>
+          )}
 
           {/* Demo credential
           <div className="mt-8 rounded-xl border border-border bg-muted/40 px-4 py-3.5">

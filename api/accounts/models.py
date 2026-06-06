@@ -44,6 +44,9 @@ class User(AbstractUser):
 
     expo_push_token = models.CharField(max_length=200, blank=True, default="")
 
+    otp_hash = models.CharField(max_length=128, blank=True, default="")
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+
     USERNAME_FIELD = "email"
     # `username` stays in REQUIRED_FIELDS for compatibility with createsuperuser.
     REQUIRED_FIELDS = ["username"]

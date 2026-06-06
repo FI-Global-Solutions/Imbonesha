@@ -6,7 +6,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from accounts.views import MeView, PushTokenView, InspectorListView, InspectorToggleActiveView
+from accounts.views import MeView, PushTokenView, InspectorListView, InspectorToggleActiveView, LoginView, VerifyOtpView
 from detections.views import DetectionJobViewSet
 from flags.views import AnalyticsView, FlagViewSet, InspectorWorkloadView, ReportViewSet
 from imagery.views import AOIViewSet
@@ -33,7 +33,8 @@ router.register(r"reports", ReportViewSet, basename="report")
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health),
-    path("api/v1/auth/login/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/v1/auth/login/", LoginView.as_view(), name="token_obtain_pair"),
+    path("api/v1/auth/verify-otp/", VerifyOtpView.as_view(), name="verify_otp"),
     path("api/v1/auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/v1/me/", MeView.as_view(), name="me"),
     path("api/v1/me/push-token/", PushTokenView.as_view(), name="push-token"),
