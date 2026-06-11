@@ -293,23 +293,6 @@ export default function LoginPage() {
               </form>
             </>
           )}
-
-          {/* Demo credential
-          <div className="mt-8 rounded-xl border border-border bg-muted/40 px-4 py-3.5">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-              Demo credentials
-            </p>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Email</span>
-                <span className="text-xs font-mono font-medium">demo@imbonesha.gov.rw</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Password</span>
-                <span className="text-xs font-mono font-medium">Demo2026!</span>
-              </div>
-            </div>
-          </div> */}
         </div>
       </div>
     </div>
