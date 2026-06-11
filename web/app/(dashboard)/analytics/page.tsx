@@ -25,17 +25,21 @@ const SEV_HEX: Record<string, string> = {
 };
 
 const PERMIT_HEX: Record<string, string> = {
-  active:    "#22c55e",
-  expired:   "#eab308",
-  no_permit: "#ef4444",
-  other:     "#f97316",
+  authorized:     "#22c55e",
+  expired:        "#eab308",
+  no_permit:      "#ef4444",
+  wrong_category: "#f59e0b",
+  zone_violation: "#dc2626",
+  no_parcel:      "#94a3b8",
 };
 
 const PERMIT_LABELS: Record<string, string> = {
-  active:    "Active permit",
-  expired:   "Expired",
-  no_permit: "No permit",
-  other:     "Other issue",
+  authorized:     "Authorized",
+  expired:        "Expired permit",
+  no_permit:      "No permit",
+  wrong_category: "Wrong category",
+  zone_violation: "Zone violation",
+  no_parcel:      "Unregistered land",
 };
 
 const STATUS_HEX: Record<string, string> = {

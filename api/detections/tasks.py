@@ -55,7 +55,7 @@ from tenacity import (
 )
 
 from detections.models import ChangeType, Detection, DetectionJob, JobStatus
-from flags.models import Flag, FlagStatus, compute_severity
+from flags.models import AuditLog, Flag, FlagStatus, PermitStatus, compute_severity
 from services.permits import get_permit_adapter
 from services.permits.base import PermitServiceError
 
@@ -349,19 +349,22 @@ def _run_pipeline(job: DetectionJob) -> int:
 
         has_active_permit = parcel_data.has_active_permit if parcel_data else False
         most_recent = parcel_data.most_recent_permit if parcel_data else None
-        permit_status = most_recent.status if most_recent else None
+        raw_permit_status = most_recent.status if most_recent else None
         permit_category = most_recent.category if most_recent else None
+        permit_no = most_recent.permit_no if most_recent else None
         zone_type = parcel_data.zone_type if parcel_data else (
             matched_parcel.zone_type if matched_parcel else ""
         )
 
-        severity = compute_severity(
+        severity, flag_permit_status, severity_reason = compute_severity(
             has_active_permit=has_active_permit,
-            permit_status=permit_status,
+            permit_status=raw_permit_status,
             permit_category=permit_category,
+            permit_no=permit_no,
             detected_change_type=change_type,
             area_sqm=area_sqm,
             zone_type=zone_type,
+            matched_parcel=matched_parcel is not None,
         )
 
         district = (
@@ -372,6 +375,8 @@ def _run_pipeline(job: DetectionJob) -> int:
             detection=detection,
             defaults={
                 "severity": severity,
+                "permit_status": flag_permit_status,
+                "severity_reason": severity_reason,
                 "status": FlagStatus.PENDING,
                 "district": district,
             },
@@ -380,13 +385,25 @@ def _run_pipeline(job: DetectionJob) -> int:
         if flag_created:
             flags_created += 1
             logger.info(
-                "Flag #%d created: severity=%s parcel=%s confidence=%.3f area_sqm=%.0f",
+                "Flag #%d created: severity=%s permit_status=%s parcel=%s",
                 flag.pk,
                 severity,
+                flag_permit_status,
                 matched_parcel.upi if matched_parcel else "unmatched",
-                confidence,
-                area_sqm,
             )
+
+            # Auto-verify flags where an active permit was confirmed.
+            if flag_permit_status == PermitStatus.AUTHORIZED:
+                flag.status = FlagStatus.DISMISSED
+                flag.save(update_fields=["status", "updated_at"])
+                AuditLog.objects.create(
+                    flag=flag,
+                    actor=None,
+                    event="auto_verified",
+                    before={"status": FlagStatus.PENDING},
+                    after={"status": FlagStatus.DISMISSED},
+                    message=severity_reason,
+                )
 
     return flags_created
 

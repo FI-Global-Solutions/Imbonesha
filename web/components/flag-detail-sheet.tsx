@@ -59,46 +59,116 @@ function ConfidenceRing({ value }: { value: number }) {
 }
 
 function PermitBlock({ flag }: { flag: FlagDetail }) {
-  const permitStatus = flag.permit_status;
-  const p = flag.parcel?.active_permit;
+  const ps = flag.permit_status;
+  const reason = flag.severity_reason;
+  const permits = flag.permit_details ?? [];
+  const activePermit = permits.find((p) => p.status === "active") ?? permits[0] ?? null;
 
-  if (permitStatus === "active") {
+  const fmt = (d: string | null) => d ? format(new Date(d), "d MMM yyyy") : null;
+
+  if (ps === "authorized") {
     return (
-      <div className="rounded-md border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950 p-4 space-y-1">
-        <p className="text-sm font-semibold text-green-700 dark:text-green-400">Active permit</p>
-        {p && <p className="text-xs text-muted-foreground font-mono">{p.permit_no}</p>}
-        {p && <p className="text-xs text-muted-foreground">{p.get_category_display}</p>}
-        {p?.expiry_date && (
-          <p className="text-xs text-muted-foreground">
-            Expires {format(new Date(p.expiry_date), "d MMM yyyy")}
+      <div className="rounded-md border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950 p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+          <p className="text-sm font-semibold text-green-700 dark:text-green-400">Authorized Construction</p>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{reason || "Active construction permit on file."}</p>
+        {activePermit && (
+          <div className="pt-1 space-y-1 border-t border-green-200 dark:border-green-800">
+            <p className="text-xs font-mono font-medium">{activePermit.permit_no}</p>
+            <p className="text-xs text-muted-foreground">{activePermit.category_display}</p>
+            {activePermit.issued_date && <p className="text-xs text-muted-foreground">Issued {fmt(activePermit.issued_date)}</p>}
+            {activePermit.expiry_date && <p className="text-xs text-muted-foreground">Expires {fmt(activePermit.expiry_date)}</p>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (ps === "expired") {
+    return (
+      <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950 p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Permit Expired</p>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{reason || "Construction permit exists but has lapsed."}</p>
+        {activePermit && (
+          <div className="pt-1 space-y-1 border-t border-amber-200 dark:border-amber-800">
+            <p className="text-xs font-mono font-medium">{activePermit.permit_no}</p>
+            <p className="text-xs text-muted-foreground">{activePermit.category_display}</p>
+            {activePermit.issued_date && <p className="text-xs text-muted-foreground">Issued {fmt(activePermit.issued_date)}</p>}
+            {activePermit.expiry_date && <p className="text-xs text-muted-foreground text-amber-600 dark:text-amber-400 font-medium">Expired {fmt(activePermit.expiry_date)}</p>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (ps === "wrong_category") {
+    return (
+      <div className="rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950 p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-yellow-500 shrink-0" />
+          <p className="text-sm font-semibold text-yellow-700 dark:text-yellow-400">Wrong Permit Category</p>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{reason || "Active permit exists but may not cover this type of construction."}</p>
+        {activePermit && (
+          <div className="pt-1 space-y-1 border-t border-yellow-200 dark:border-yellow-800">
+            <p className="text-xs font-mono font-medium">{activePermit.permit_no}</p>
+            <p className="text-xs text-muted-foreground">{activePermit.category_display}</p>
+            {activePermit.expiry_date && <p className="text-xs text-muted-foreground">Expires {fmt(activePermit.expiry_date)}</p>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (ps === "zone_violation") {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" />
+          <p className="text-sm font-semibold text-red-700 dark:text-red-400">Protected Zone Violation</p>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{reason || "Construction detected in a protected zone. No construction is permitted regardless of permit status."}</p>
+        {flag.parcel?.zone_type && (
+          <p className="text-xs text-muted-foreground pt-1 border-t border-red-200 dark:border-red-800">
+            Zone: <span className="font-medium capitalize">{flag.parcel.zone_type.replace(/_/g, " ")}</span>
           </p>
         )}
       </div>
     );
   }
 
-  if (permitStatus === "expired") {
+  if (ps === "no_parcel") {
     return (
-      <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950 p-4">
-        <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Expired permit</p>
-        <p className="text-xs text-muted-foreground mt-0.5">Permit exists but has lapsed</p>
+      <div className="rounded-md border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900 p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-slate-400 shrink-0" />
+          <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Unregistered Land</p>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{reason || "Construction detected on land with no registered parcel in the national registry."}</p>
       </div>
     );
   }
 
-  if (permitStatus === "other") {
-    return (
-      <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950 p-4">
-        <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Permit issue</p>
-        <p className="text-xs text-muted-foreground mt-0.5">Permit present but not active</p>
-      </div>
-    );
-  }
-
+  // no_permit (default)
   return (
-    <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 p-4">
-      <p className="text-sm font-semibold text-red-700 dark:text-red-400">No permit</p>
-      <p className="text-xs text-muted-foreground mt-0.5">No construction permit found for this parcel</p>
+    <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 p-4 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" />
+        <p className="text-sm font-semibold text-red-700 dark:text-red-400">No Construction Permit</p>
+      </div>
+      <p className="text-xs text-muted-foreground leading-relaxed">{reason || "No construction permit has been issued for this parcel."}</p>
+      {flag.parcel && (
+        <div className="pt-1 space-y-1 border-t border-red-200 dark:border-red-800">
+          <p className="text-xs text-muted-foreground">Parcel: <span className="font-mono">{flag.parcel.upi}</span></p>
+          {flag.parcel.owner_name && <p className="text-xs text-muted-foreground">Owner: {flag.parcel.owner_name}</p>}
+          <p className="text-xs text-muted-foreground capitalize">Zone: {flag.parcel.zone_type?.replace(/_/g, " ")}</p>
+        </div>
+      )}
     </div>
   );
 }

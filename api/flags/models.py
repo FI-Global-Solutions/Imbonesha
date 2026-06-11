@@ -4,19 +4,18 @@ The Flag is the core enforcement artefact. It ties a Detection to a severity
 rating and routes the case to an inspector. State transitions are logged
 immutably in AuditLog via Django signals (see flags/signals.py).
 
-Severity computation (compute_severity):
+Severity + permit status computation (compute_severity):
 
-    no_permit, large footprint (≥ 100 sqm) → critical
-    no_permit, small footprint            → high
-    expired_permit, large footprint        → high
-    expired_permit, small footprint        → medium
-    wrong_category (permit exists, wrong type) → medium
-    authorized (valid permit)             → low   (shouldn't normally flag)
-    fallback                              → medium
+    zone_violation  → critical  (green_zone/protected regardless of permit)
+    no_parcel       → high      (no matching parcel in registry)
+    no_permit       → critical if area ≥ 200 sqm, else high
+    expired         → high
+    wrong_category  → medium
+    authorized      → low       (auto-verified at creation time)
 
-These are intentionally coarse for the stub. The real scoring will also
-factor in zone_type (green_zone construction is always critical) and
-historical violations on the parcel.
+permit_status and severity_reason are stored at flag creation time —
+they reflect the legally relevant state at the moment of detection and
+are never recomputed after that.
 """
 
 import math
@@ -31,6 +30,15 @@ class Severity(models.TextChoices):
     MEDIUM = "medium", "Medium"
     HIGH = "high", "High"
     CRITICAL = "critical", "Critical"
+
+
+class PermitStatus(models.TextChoices):
+    AUTHORIZED = "authorized", "Authorized — Active Permit"
+    NO_PERMIT = "no_permit", "No Construction Permit"
+    EXPIRED = "expired", "Expired Permit"
+    WRONG_CATEGORY = "wrong_category", "Wrong Permit Category"
+    ZONE_VIOLATION = "zone_violation", "Protected Zone Violation"
+    NO_PARCEL = "no_parcel", "Unregistered Land"
 
 
 class FlagStatus(models.TextChoices):
@@ -105,6 +113,15 @@ class Flag(models.Model):
     # Denormalised district from detection → parcel for fast row-level filtering.
     # Populated at flag creation; never changes after that.
     district = models.CharField(max_length=64, blank=True, default="", db_index=True)
+
+    # Permit classification at detection time — stored once, never recomputed.
+    permit_status = models.CharField(
+        max_length=32,
+        choices=PermitStatus.choices,
+        default=PermitStatus.NO_PERMIT,
+        db_index=True,
+    )
+    severity_reason = models.TextField(blank=True, default="")
 
     notes = models.TextField(blank=True, default="")
 
@@ -322,44 +339,111 @@ def compute_severity(
     has_active_permit: bool,
     permit_status: str | None,
     permit_category: str | None,
+    permit_no: str | None = None,
     detected_change_type: str,
     area_sqm: float,
     zone_type: str = "",
-) -> str:
-    """Compute a Flag severity string from detection + permit facts.
+    matched_parcel: bool = True,
+) -> tuple[str, str, str]:
+    """Compute (severity, permit_status, reason) from detection + permit facts.
+
+    Returns a 3-tuple stored on the Flag at creation time and never recomputed.
 
     Args:
         has_active_permit: True if the parcel currently holds an active permit.
-        permit_status: The status of the most relevant permit ("active",
-            "expired", "revoked", etc.) or None if no permit exists.
-        permit_category: The category string ("1"-"7") of the most relevant
-            permit, or None.
+        permit_status: Status of the most relevant permit, or None if no permit.
+        permit_category: Category string ("1"–"7") of the most relevant permit.
+        permit_no: Permit number for the human-readable reason string.
         detected_change_type: The Detection.change_type value.
         area_sqm: Footprint area from Detection.area_sqm.
-        zone_type: Parcel zone classification (e.g. "green_zone" → always
-            critical).
+        zone_type: Parcel zone classification.
+        matched_parcel: False if no parcel was found in the spatial join.
 
     Returns:
-        A Severity value string.
+        (severity, permit_status_enum, reason_text)
     """
-    large = area_sqm >= 100.0
+    # Case 0: no matching parcel — unregistered land
+    if not matched_parcel:
+        return (
+            Severity.HIGH,
+            PermitStatus.NO_PARCEL,
+            "Construction detected on land with no registered parcel — "
+            "possible unregistered plot or boundary error",
+        )
 
-    # Construction in a protected zone is always critical regardless of permit.
-    if zone_type == "green_zone":
-        return Severity.CRITICAL
+    # Case 1: protected zone — always critical
+    if zone_type in ("green_zone", "protected", "wetland", "forest"):
+        zone_label = zone_type.replace("_", " ").title()
+        return (
+            Severity.CRITICAL,
+            PermitStatus.ZONE_VIOLATION,
+            f"Construction detected in {zone_label} — no construction "
+            "permitted in this zone regardless of permit status",
+        )
 
-    if not has_active_permit:
-        if permit_status is None:
-            # No permit ever issued.
-            return Severity.CRITICAL if large else Severity.HIGH
-        else:
-            # Permit exists but is not active (expired / revoked / pending).
-            return Severity.HIGH if large else Severity.MEDIUM
+    large = area_sqm >= 200.0
 
-    # Has an active permit — check for category mismatch.
-    if detected_change_type == "commercial" and permit_category in ("1", "2"):
-        # Residential permit but a commercial-looking structure detected.
-        return Severity.MEDIUM
+    # Case 2: no permit at all
+    if not has_active_permit and permit_status is None:
+        if large:
+            return (
+                Severity.CRITICAL,
+                PermitStatus.NO_PERMIT,
+                f"No construction permit on file — large structure ({area_sqm:.0f} m²) "
+                "detected without any permit history",
+            )
+        return (
+            Severity.HIGH,
+            PermitStatus.NO_PERMIT,
+            "No construction permit on file for this parcel",
+        )
 
-    # Valid permit, matching type, small footprint — low concern.
-    return Severity.LOW
+    # Case 3: permit exists but is not active (expired / revoked / pending)
+    if not has_active_permit and permit_status is not None:
+        permit_ref = f" (permit {permit_no})" if permit_no else ""
+        return (
+            Severity.HIGH,
+            PermitStatus.EXPIRED,
+            f"Construction permit{permit_ref} is {permit_status} — "
+            "construction may require permit renewal",
+        )
+
+    # Case 4: active permit — check for category mismatch
+    if has_active_permit:
+        mismatch = False
+        if detected_change_type == "commercial" and permit_category in ("1", "2"):
+            mismatch = True
+        if permit_category == "1" and area_sqm > 200:
+            mismatch = True
+
+        if mismatch:
+            permit_ref = f"permit {permit_no}" if permit_no else "active permit"
+            cat_labels = {
+                "1": "single-family residential (Cat 1)",
+                "2": "residential up to G+1 (Cat 2)",
+                "3": "multi-storey residential (Cat 3)",
+                "4": "industrial/commercial (Cat 4)",
+                "5": "large commercial complex (Cat 5)",
+            }
+            cat_desc = cat_labels.get(permit_category or "", f"category {permit_category}")
+            return (
+                Severity.MEDIUM,
+                PermitStatus.WRONG_CATEGORY,
+                f"Active {permit_ref} is for {cat_desc}, but detected "
+                f"construction appears to be {detected_change_type or 'a different type'}",
+            )
+
+        # Active permit, no mismatch — authorized
+        permit_ref = f"permit {permit_no}" if permit_no else "an active permit"
+        return (
+            Severity.LOW,
+            PermitStatus.AUTHORIZED,
+            f"Active {permit_ref} on file — construction is authorized",
+        )
+
+    # Fallback: conservative — treat as no permit
+    return (
+        Severity.HIGH,
+        PermitStatus.NO_PERMIT,
+        "Permit status could not be determined — flagged conservatively",
+    )

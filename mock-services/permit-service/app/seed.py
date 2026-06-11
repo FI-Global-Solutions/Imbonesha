@@ -8,11 +8,14 @@ UPI format: Province/District/Sector/Cell/Parcel
 For Kacyiru: 1/01/03/05/XXXX (Province 1=Kigali, District 01=Gasabo,
 Sector 03=Kacyiru, Cell 05=Kamatamu — example values).
 
-Scenario distribution:
-    60% authorized      — active permit, matches construction
-    20% no permit       — primary "flag this" case
-    10% expired permit  — permit existed but lapsed
-    10% wrong category  — permit for residential, building looks commercial
+Scenario distribution (80 parcels):
+    50% authorized      — 40 parcels — active permit, matches construction
+    20% no permit       — 16 parcels — no permit at all
+    12% expired permit  — ~10 parcels — permit existed but lapsed
+     8% wrong category  — ~6 parcels — permit for residential, building commercial
+     5% green_zone      — 4 parcels  — protected zone, any construction = critical
+     5% unregistered    — 4 parcels  — parcel exists in registry but is NOT synced
+                                        (simulates land not in the local DB)
 
 Run with: python -m app.seed
 """
@@ -112,14 +115,18 @@ def _parcel_size_frac(parcel_index: int) -> float:
 
 def _assign_scenario(parcel_index: int, total: int) -> str:
     rank = parcel_index / total
-    if rank < 0.60:
+    if rank < 0.50:
         return "authorized"
-    elif rank < 0.80:
+    elif rank < 0.70:
         return "no_permit"
-    elif rank < 0.90:
+    elif rank < 0.82:
         return "expired"
-    else:
+    elif rank < 0.90:
         return "wrong_category"
+    elif rank < 0.95:
+        return "green_zone"
+    else:
+        return "unregistered"
 
 
 def _permit_number(scenario: str, parcel_index: int) -> str:
@@ -132,8 +139,33 @@ def _permit_number(scenario: str, parcel_index: int) -> str:
 
 
 def _make_permit(upi: str, scenario: str, parcel_index: int) -> Permit | None:
-    if scenario == "no_permit":
+    if scenario in ("no_permit", "unregistered"):
         return None
+
+    if scenario == "green_zone":
+        # Green-zone parcels may or may not have a permit — doesn't matter,
+        # zone_type drives the critical severity. Give half of them a permit
+        # to test that the zone check overrides permit status.
+        if parcel_index % 2 == 0:
+            return None
+        today = date.today()
+        permit_no = _permit_number(scenario, parcel_index)
+        applicant = _random_owner()
+        issued = today - timedelta(days=random.randint(60, 400))
+        expiry = today + timedelta(days=random.randint(180, 720))
+        return Permit(
+            id=f"permit-{parcel_index}",
+            permit_no=permit_no,
+            upi=upi,
+            category="1",
+            status="active",
+            issued_date=issued,
+            expiry_date=expiry,
+            intended_use="residential",
+            max_floors_allowed=1,
+            max_footprint_sqm=80.0,
+            applicant_name=applicant,
+        )
 
     today = date.today()
     permit_no = _permit_number(scenario, parcel_index)
@@ -209,9 +241,12 @@ def _make_permit(upi: str, scenario: str, parcel_index: int) -> Permit | None:
 
 def _zone_and_land_use(parcel_index: int, scenario: str) -> tuple[str, str]:
     """Return (zone_type, land_use) with realistic variety."""
-    # A few green-zone parcels (always critical if flagged)
-    if parcel_index in (3, 17, 52):
+    # Green-zone scenario always gets green_zone classification.
+    if scenario == "green_zone":
         return "green_zone", "green_zone"
+    # Unregistered parcels — use a realistic zone (they just won't be in local DB).
+    if scenario == "unregistered":
+        return "low_density_residential", "residential"
     # A handful of commercial parcels
     if parcel_index % 13 == 0:
         return "commercial_zone", "commercial"
@@ -240,7 +275,7 @@ async def seed() -> None:
 
     total_parcels = GRID_ROWS * GRID_COLS
     parcels_created = permits_created = 0
-    scenarios_count = {"authorized": 0, "no_permit": 0, "expired": 0, "wrong_category": 0}
+    scenarios_count = {"authorized": 0, "no_permit": 0, "expired": 0, "wrong_category": 0, "green_zone": 0, "unregistered": 0}
 
     async with SessionLocal() as session:
         for row in range(GRID_ROWS):

@@ -6,6 +6,7 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   flexRender,
   createColumnHelper,
   type SortingState,
@@ -15,6 +16,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import {
   Download, Search, X, ChevronUp, ChevronDown, ChevronsUpDown,
   MoreHorizontal, ExternalLink, FileText, Eye, UserCheck, Trash2,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,11 +53,12 @@ const ADMIN_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007";
 
 const PERMIT_LABEL: Record<string, { label: string; cls: string }> = {
-  active:    { label: "Active",     cls: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-900" },
-  expired:   { label: "Expired",    cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900" },
-  no_permit: { label: "No permit",  cls: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900" },
-  other:     { label: "Other",      cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900" },
-  no_parcel: { label: "No parcel",  cls: "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700" },
+  authorized:     { label: "Authorized",      cls: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-900" },
+  expired:        { label: "Expired",         cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900" },
+  no_permit:      { label: "No permit",       cls: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900" },
+  wrong_category: { label: "Wrong category",  cls: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-900" },
+  zone_violation: { label: "Zone violation",  cls: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900" },
+  no_parcel:      { label: "Unregistered",    cls: "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700" },
 };
 
 const col = createColumnHelper<FlagListItem>();
@@ -72,6 +75,7 @@ export default function FlagsPage() {
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [permitFilter, setPermitFilter] = useState("all");
   const [sorting, setSorting] = useState<SortingState>([{ id: "created_at", desc: true }]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
@@ -91,6 +95,7 @@ export default function FlagsPage() {
     let rows = allFlags;
     if (severityFilter !== "all") rows = rows.filter((f) => f.severity === severityFilter);
     if (statusFilter !== "all") rows = rows.filter((f) => f.status === statusFilter);
+    if (permitFilter !== "all") rows = rows.filter((f) => f.permit_status === permitFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(
@@ -101,7 +106,7 @@ export default function FlagsPage() {
       );
     }
     return rows;
-  }, [allFlags, severityFilter, statusFilter, search]);
+  }, [allFlags, severityFilter, statusFilter, permitFilter, search]);
 
   const columns = useMemo(() => [
     col.display({
@@ -328,6 +333,8 @@ export default function FlagsPage() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: 10, pageIndex: 0 } },
     enableRowSelection: true,
   });
 
@@ -377,7 +384,7 @@ export default function FlagsPage() {
               <Input
                 placeholder="Search UPI, owner, district…"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); table.setPageIndex(0); }}
                 className="pl-8 h-8 w-64 text-sm"
               />
               {search && (
@@ -392,7 +399,7 @@ export default function FlagsPage() {
               )}
             </div>
 
-            <Select value={severityFilter} onValueChange={(v) => setSeverityFilter(v ?? "all")}>
+            <Select value={severityFilter} onValueChange={(v) => { setSeverityFilter(v ?? "all"); table.setPageIndex(0); }}>
               <SelectTrigger className="h-8 w-36 text-sm">
                 <SelectValue placeholder="All severities" />
               </SelectTrigger>
@@ -405,7 +412,7 @@ export default function FlagsPage() {
               </SelectContent>
             </Select>
 
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v ?? "all"); table.setPageIndex(0); }}>
               <SelectTrigger className="h-8 w-36 text-sm">
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
@@ -423,12 +430,27 @@ export default function FlagsPage() {
               </SelectContent>
             </Select>
 
-            {(severityFilter !== "all" || statusFilter !== "all" || search) && (
+            <Select value={permitFilter} onValueChange={(v) => { setPermitFilter(v ?? "all"); table.setPageIndex(0); }}>
+              <SelectTrigger className="h-8 w-40 text-sm">
+                <SelectValue placeholder="All permits" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All permits</SelectItem>
+                <SelectItem value="no_permit">No permit</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+                <SelectItem value="wrong_category">Wrong category</SelectItem>
+                <SelectItem value="zone_violation">Zone violation</SelectItem>
+                <SelectItem value="no_parcel">Unregistered land</SelectItem>
+                <SelectItem value="authorized">Authorized</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {(severityFilter !== "all" || statusFilter !== "all" || permitFilter !== "all" || search) && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-8 text-muted-foreground gap-1"
-                onClick={() => { setSeverityFilter("all"); setStatusFilter("all"); setSearch(""); }}
+                onClick={() => { setSeverityFilter("all"); setStatusFilter("all"); setPermitFilter("all"); setSearch(""); table.setPageIndex(0); }}
               >
                 <X className="h-3.5 w-3.5" /> Clear filters
               </Button>
@@ -473,7 +495,7 @@ export default function FlagsPage() {
                             variant="ghost"
                             size="sm"
                             className="mt-2 text-muted-foreground"
-                            onClick={() => { setSeverityFilter("all"); setStatusFilter("all"); setSearch(""); }}
+                            onClick={() => { setSeverityFilter("all"); setStatusFilter("all"); setPermitFilter("all"); setSearch(""); table.setPageIndex(0); }}
                           >
                             Clear filters
                           </Button>
@@ -503,9 +525,64 @@ export default function FlagsPage() {
             </Table>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            {table.getRowModel().rows.length} of {filtered.length} rows shown
-          </p>
+          {/* Pagination */}
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-muted-foreground">
+              {filtered.length === 0 ? "No results" : (
+                <>
+                  {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1}
+                  {" – "}
+                  {Math.min(
+                    (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
+                    filtered.length,
+                  )}
+                  {" of "}
+                  {filtered.length} flags
+                </>
+              )}
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => table.setPageIndex(0)}
+                disabled={!table.getCanPreviousPage()}
+              >
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-xs text-muted-foreground px-2 tabular-nums">
+                Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                disabled={!table.getCanNextPage()}
+              >
+                <ChevronsRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 

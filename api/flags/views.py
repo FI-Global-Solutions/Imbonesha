@@ -954,34 +954,30 @@ class AnalyticsView(APIView):
             day_map[d][row["severity"]] = row["count"]
         flags_over_time = sorted(day_map.values(), key=lambda x: x["date"])
 
-        # Flags by district
+        # Flags by district — collapse null/empty into "Unknown" and merge duplicates
         district_qs = (
             Flag.objects
             .values("district")
             .annotate(count=Count("id"))
             .order_by("-count")
         )
+        district_totals: dict[str, int] = {}
+        for r in district_qs:
+            name = r["district"] or "Unknown"
+            district_totals[name] = district_totals.get(name, 0) + r["count"]
         flags_by_district = [
-            {"district": r["district"] or "Gasabo", "count": r["count"]}
-            for r in district_qs
-            if r["count"] > 0
+            {"district": name, "count": count}
+            for name, count in sorted(district_totals.items(), key=lambda x: -x[1])
+            if count > 0
         ]
 
-        # Permit status breakdown from FlagListSerializer logic
-        from .serializers import FlagListSerializer as _S
-        permit_counts = {"active": 0, "expired": 0, "no_permit": 0, "other": 0}
-        for flag in Flag.objects.select_related("detection__parcel").prefetch_related("detection__parcel__permits"):
-            parcel = flag.detection.parcel if flag.detection else None
-            if parcel is None:
-                permit_counts["no_permit"] += 1
-            elif parcel.permits.filter(status="active").exists():
-                permit_counts["active"] += 1
-            elif parcel.permits.filter(status="expired").exists():
-                permit_counts["expired"] += 1
-            elif parcel.permits.exists():
-                permit_counts["other"] += 1
-            else:
-                permit_counts["no_permit"] += 1
+        # Permit status breakdown from stored permit_status field
+        permit_qs = (
+            Flag.objects
+            .values("permit_status")
+            .annotate(count=Count("id"))
+        )
+        permit_counts = {row["permit_status"]: row["count"] for row in permit_qs}
 
         # Flag status breakdown
         status_qs = (

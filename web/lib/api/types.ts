@@ -1,6 +1,6 @@
 export type Severity = "critical" | "high" | "medium" | "low";
 export type FlagStatus = "pending" | "assigned" | "in_review" | "confirmed" | "dismissed" | "monitoring" | "inaccessible" | "data_error" | "closed";
-export type PermitStatus = "active" | "expired" | "revoked" | "pending" | "no_permit" | "no_parcel" | "other" | null;
+export type PermitStatus = "authorized" | "no_permit" | "expired" | "wrong_category" | "zone_violation" | "no_parcel" | null;
 
 export interface User {
   id: number;
@@ -121,6 +121,19 @@ export interface InspectorWorkload {
   completed_count: number;
 }
 
+export interface PermitDetail {
+  permit_no: string;
+  category: string;
+  category_display: string;
+  status: string;
+  issued_date: string | null;
+  expiry_date: string | null;
+  intended_use: string;
+  max_floors_allowed: number;
+  max_footprint_sqm: number | null;
+  applicant_name: string;
+}
+
 export interface FlagListItem {
   id: number;
   severity: Severity;
@@ -129,6 +142,8 @@ export interface FlagListItem {
   parcel_upi: string | null;
   owner_name: string | null;
   permit_status: PermitStatus;
+  permit_status_display: string | null;
+  severity_reason: string;
   centroid_lat: number | null;
   centroid_lng: number | null;
   assigned_to_name: string | null;
@@ -147,6 +162,7 @@ export interface FlagDetail extends FlagListItem {
   audit_logs: AuditLog[];
   available_transitions: string[];
   photos: InspectionPhoto[];
+  permit_details: PermitDetail[];
 }
 
 export interface FlagImagery {
@@ -241,7 +257,7 @@ export interface AnalyticsSummary {
   kpis: AnalyticsKPIs;
   flags_over_time: FlagsOverTimeRow[];
   flags_by_district: { district: string; count: number }[];
-  permit_status_breakdown: { active: number; expired: number; no_permit: number; other: number };
+  permit_status_breakdown: Record<string, number>;
   status_breakdown: Record<string, number>;
   detection_throughput: { week: string; jobs: number; detections: number }[];
 }

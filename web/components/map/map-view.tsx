@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import Map, { Source, Layer, NavigationControl } from "react-map-gl/maplibre";
 import type { MapRef, LayerProps, MapMouseEvent } from "react-map-gl/maplibre";
 import { useTheme } from "next-themes";
@@ -32,6 +32,7 @@ function flagsToGeoJSON(flags: FlagListItem[]) {
           id: f.id,
           severity: f.severity,
           status: f.status,
+          permit_status: f.permit_status ?? "no_permit",
           color: SEVERITY_HEX[f.severity as Severity] ?? "#64748b",
         },
       })),
@@ -65,11 +66,11 @@ const clusterCountLayer: LayerProps = {
   },
 };
 
-const unclusteredLayer: LayerProps = {
-  id: "unclustered-point",
+const violationLayer: LayerProps = {
+  id: "violation-point",
   type: "circle",
   source: "flags",
-  filter: ["!", ["has", "point_count"]],
+  filter: ["all", ["!", ["has", "point_count"]], ["!=", ["get", "permit_status"], "authorized"]],
   paint: {
     "circle-color": ["get", "color"],
     "circle-radius": 8,
@@ -79,25 +80,53 @@ const unclusteredLayer: LayerProps = {
   },
 };
 
+const verifiedLayer: LayerProps = {
+  id: "verified-point",
+  type: "circle",
+  source: "flags",
+  filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "permit_status"], "authorized"]],
+  layout: {
+    visibility: "none",
+  },
+  paint: {
+    "circle-color": "transparent",
+    "circle-radius": 6,
+    "circle-stroke-width": 2,
+    "circle-stroke-color": "#22c55e",
+    "circle-opacity": 0,
+    "circle-stroke-opacity": 0.85,
+  },
+};
+
 export function MapView() {
   const { resolvedTheme } = useTheme();
   const mapRef = useRef<MapRef>(null);
   const openDrawer = useUIStore((s) => s.openDrawer);
+  const [showVerified, setShowVerified] = useState(false);
 
-  const { data: flagsData, isLoading } = useFlags({ limit: 200 });
+  const { data: flagsData, isLoading } = useFlags({ limit: 1000 });
   const flags = flagsData?.results ?? [];
+  const totalCount = flagsData?.count ?? 0;
   const geojson = flagsToGeoJSON(flags);
+  const verifiedCount = flags.filter((f) => f.permit_status === "authorized").length;
 
   const mapStyle = resolvedTheme === "dark" ? DARK_STYLE : LIGHT_STYLE;
+
+  const toggleVerified = useCallback(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const next = !showVerified;
+    map.setLayoutProperty("verified-point", "visibility", next ? "visible" : "none");
+    setShowVerified(next);
+  }, [showVerified]);
 
   const onClick = useCallback(
     (e: MapMouseEvent) => {
       const map = mapRef.current?.getMap();
       if (!map) return;
 
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: ["unclustered-point"],
-      });
+      const layers = ["violation-point", ...(showVerified ? ["verified-point"] : [])];
+      const features = map.queryRenderedFeatures(e.point, { layers });
 
       if (features.length > 0) {
         const flagId = features[0].properties?.id;
@@ -105,10 +134,7 @@ export function MapView() {
         return;
       }
 
-      // Click on cluster → zoom in
-      const clusters = map.queryRenderedFeatures(e.point, {
-        layers: ["clusters"],
-      });
+      const clusters = map.queryRenderedFeatures(e.point, { layers: ["clusters"] });
       if (clusters.length > 0) {
         const clusterId = clusters[0].properties?.cluster_id;
         const source = map.getSource("flags") as maplibregl.GeoJSONSource;
@@ -120,7 +146,7 @@ export function MapView() {
         }).catch(() => {});
       }
     },
-    [openDrawer]
+    [openDrawer, showVerified]
   );
 
   return (
@@ -146,12 +172,19 @@ export function MapView() {
           >
             <Layer {...clusterLayer} />
             <Layer {...clusterCountLayer} />
-            <Layer {...unclusteredLayer} />
+            <Layer {...violationLayer} />
+            <Layer {...verifiedLayer} />
           </Source>
         )}
       </Map>
 
-      <StatsOverlay flags={flags} />
+      <StatsOverlay
+        flags={flags}
+        totalCount={totalCount}
+        verifiedCount={verifiedCount}
+        showVerified={showVerified}
+        onToggleVerified={toggleVerified}
+      />
     </div>
   );
 }

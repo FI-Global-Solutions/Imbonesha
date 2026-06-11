@@ -4,6 +4,10 @@ import type { FlagListItem } from "@/lib/api/types";
 
 interface Props {
   flags: FlagListItem[];
+  totalCount: number;
+  verifiedCount: number;
+  showVerified: boolean;
+  onToggleVerified: () => void;
 }
 
 function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
@@ -17,8 +21,8 @@ function StatCard({ label, value, color }: { label: string; value: number; color
   );
 }
 
-export function StatsOverlay({ flags }: Props) {
-  const total = flags.length;
+export function StatsOverlay({ flags, totalCount, verifiedCount, showVerified, onToggleVerified }: Props) {
+  const total = totalCount;
   const critical = flags.filter((f) => f.severity === "critical").length;
   const high = flags.filter((f) => f.severity === "high").length;
   const awaiting = flags.filter((f) => f.status === "pending" || f.status === "assigned").length;
@@ -56,15 +60,37 @@ export function StatsOverlay({ flags }: Props) {
         <div className="h-px bg-white/6" />
 
         <StatCard label="Awaiting review" value={awaiting} color="text-amber-400" />
+
+        {verifiedCount > 0 && (
+          <>
+            <div className="h-px bg-white/6" />
+            <button
+              type="button"
+              onClick={onToggleVerified}
+              className={`w-full text-left flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 transition-colors ${
+                showVerified
+                  ? "bg-emerald-500/20 text-emerald-300"
+                  : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
+              }`}
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-widest leading-tight">
+                {showVerified ? "Hide verified" : "Show verified"}
+              </span>
+              <span className={`text-sm font-black tabular-nums ${showVerified ? "text-emerald-300" : "text-white/40"}`}>
+                {verifiedCount}
+              </span>
+            </button>
+          </>
+        )}
       </div>
 
-      {/* Footer bar — severity proportion */}
-      {total > 0 && (
+      {/* Footer bar — severity proportion (derived from loaded flags) */}
+      {flags.length > 0 && (
         <div className="px-4 pb-3.5">
           <div className="flex h-1 rounded-full overflow-hidden gap-px">
-            <div className="bg-red-500/80 transition-all" style={{ width: `${(critical / total) * 100}%` }} />
-            <div className="bg-orange-500/80 transition-all" style={{ width: `${(high / total) * 100}%` }} />
-            <div className="bg-amber-500/80 transition-all" style={{ width: `${(flags.filter(f => f.severity === "medium").length / total) * 100}%` }} />
+            <div className="bg-red-500/80 transition-all" style={{ width: `${(critical / flags.length) * 100}%` }} />
+            <div className="bg-orange-500/80 transition-all" style={{ width: `${(high / flags.length) * 100}%` }} />
+            <div className="bg-amber-500/80 transition-all" style={{ width: `${(flags.filter(f => f.severity === "medium").length / flags.length) * 100}%` }} />
             <div className="bg-slate-500/60 flex-1" />
           </div>
           <p className="text-[9px] text-white/25 mt-1.5 font-medium tracking-wide">Severity distribution</p>

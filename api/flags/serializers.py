@@ -12,7 +12,7 @@ from detections.models import Detection
 from imagery.models import ImageScene
 from parcels.models import Parcel, Permit
 
-from .models import AuditLog, Flag, Inspection, InspectionPhoto, Report, VALID_TRANSITIONS
+from .models import AuditLog, Flag, Inspection, InspectionPhoto, PermitStatus, Report, VALID_TRANSITIONS
 
 
 class _PermitSerializer(serializers.ModelSerializer):
@@ -85,7 +85,7 @@ class FlagListSerializer(serializers.ModelSerializer):
     owner_name = serializers.SerializerMethodField()
     centroid_lat = serializers.SerializerMethodField()
     centroid_lng = serializers.SerializerMethodField()
-    permit_status = serializers.SerializerMethodField()
+    permit_status_display = serializers.CharField(source="get_permit_status_display", read_only=True)
     assigned_to_name = serializers.SerializerMethodField()
     assigned_by_email = serializers.SerializerMethodField()
 
@@ -93,7 +93,8 @@ class FlagListSerializer(serializers.ModelSerializer):
         model = Flag
         fields = (
             "id", "severity", "status", "district",
-            "parcel_upi", "owner_name", "permit_status",
+            "parcel_upi", "owner_name",
+            "permit_status", "permit_status_display", "severity_reason",
             "centroid_lat", "centroid_lng",
             "assigned_to_name", "assigned_at", "assigned_by_email",
             "created_at", "updated_at",
@@ -123,23 +124,6 @@ class FlagListSerializer(serializers.ModelSerializer):
 
     def get_assigned_by_email(self, obj: Flag) -> str | None:
         return obj.assigned_by.email if obj.assigned_by else None
-
-    def get_permit_status(self, obj: Flag) -> str | None:
-        try:
-            parcel = obj.detection.parcel
-            if parcel is None:
-                return "no_parcel"
-            active = parcel.permits.filter(status="active").exists()
-            if active:
-                return "active"
-            expired = parcel.permits.filter(status="expired").exists()
-            if expired:
-                return "expired"
-            if parcel.permits.exists():
-                return "other"
-            return "no_permit"
-        except Exception:
-            return None
 
 
 class _InspectorSerializer(serializers.ModelSerializer):
@@ -191,12 +175,14 @@ class FlagDetailSerializer(FlagListSerializer):
     audit_logs = serializers.SerializerMethodField()
     available_transitions = serializers.SerializerMethodField()
     photos = serializers.SerializerMethodField()
+    permit_details = serializers.SerializerMethodField()
 
     class Meta(FlagListSerializer.Meta):
         fields = FlagListSerializer.Meta.fields + (
             "parcel", "detection", "notes",
             "assigned_to", "assigned_at", "assigned_by_email",
             "inspections", "audit_logs", "available_transitions", "photos",
+            "permit_details",
         )
 
     def get_parcel(self, obj: Flag) -> dict | None:
@@ -204,6 +190,29 @@ class FlagDetailSerializer(FlagListSerializer):
             return _ParcelSerializer(obj.detection.parcel).data
         except Exception:
             return None
+
+    def get_permit_details(self, obj: Flag) -> list:
+        try:
+            parcel = obj.detection.parcel
+            if parcel is None:
+                return []
+            return [
+                {
+                    "permit_no": p.permit_no,
+                    "category": p.category,
+                    "category_display": p.get_category_display(),
+                    "status": p.status,
+                    "issued_date": p.issued_date,
+                    "expiry_date": p.expiry_date,
+                    "intended_use": p.intended_use,
+                    "max_floors_allowed": p.max_floors_allowed,
+                    "max_footprint_sqm": p.max_footprint_sqm,
+                    "applicant_name": p.applicant_name,
+                }
+                for p in parcel.permits.all()
+            ]
+        except Exception:
+            return []
 
     def get_detection(self, obj: Flag) -> dict:
         return _DetectionSerializer(obj.detection).data
