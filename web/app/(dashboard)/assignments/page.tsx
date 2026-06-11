@@ -59,7 +59,7 @@ function AssignmentCard({ flag, completed }: { flag: FlagListItem; completed: bo
               {" · "}
               {flag.permit_status === "no_permit" ? "No permit" :
                flag.permit_status === "expired" ? "Expired permit" :
-               flag.permit_status === "active" ? "Active permit" : "—"}
+               flag.permit_status === "authorized" ? "Active permit" : "—"}
             </p>
             <p className="text-[10px] text-muted-foreground mt-1.5">
               Flagged {formatDistanceToNow(new Date(flag.created_at), { addSuffix: true })}
