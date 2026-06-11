@@ -47,7 +47,7 @@ import { useFlags, useMe, useDeleteFlag, useDeleteFlags } from "@/lib/api/hooks"
 import { useUIStore } from "@/lib/store";
 import { getCookie } from "@/lib/api/client";
 import { SEVERITY_BADGE_CLASS, SEVERITY_LABEL, STATUS_BADGE_CLASS, STATUS_LABEL } from "@/lib/severity";
-import type { FlagListItem, Severity, FlagStatus, PermitStatus } from "@/lib/api/types";
+import type { FlagListItem, Severity, FlagStatus } from "@/lib/api/types";
 
 const ADMIN_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8007";
@@ -113,13 +113,8 @@ export default function FlagsPage() {
       id: "select",
       header: ({ table }) => (
         <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected()
-              ? true
-              : table.getIsSomePageRowsSelected()
-              ? "mixed"
-              : false
-          }
+          checked={table.getIsAllPageRowsSelected()}
+          indeterminate={table.getIsSomePageRowsSelected()}
           onCheckedChange={(v) => table.toggleAllPageRowsSelected(v === true)}
           aria-label="Select all"
         />
