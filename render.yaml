@@ -1,4 +1,25 @@
 services:
+  # ── Permit mock service ───────────────────────────────────────────────────
+  # Deployed first so the API can sync parcels from it on startup.
+  # start.sh: seeds the permit DB (drop + recreate + load 80 parcels / 58 permits)
+  # then starts uvicorn. Re-seeds on every deploy to stay in sync with seed.py.
+  - type: web
+    name: imbonesha-permit
+    runtime: docker
+    dockerfilePath: mock-services/permit-service/Dockerfile
+    dockerContext: mock-services/permit-service
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+    healthCheckPath: /health
+
+  # ── Django REST API ───────────────────────────────────────────────────────
+  # start.sh order:
+  #   1. migrate          — apply any pending Django migrations
+  #   2. collectstatic    — WhiteNoise static assets
+  #   3. wait for permit  — poll /health until imbonesha-permit is up (max 2 min)
+  #   4. sync_parcels     — upsert 80 parcels + permits into PostGIS mirror
+  #   5. gunicorn         — start the API server
   - type: web
     name: imbonesha-api
     runtime: docker
@@ -39,21 +60,16 @@ services:
       - key: MINIO_PUBLIC_ENDPOINT
         sync: false
       - key: NOTIFICATION_BACKEND
-        value: console
+        value: sendgrid
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: NOTIFICATION_FROM_EMAIL
+        sync: false
       - key: FRONTEND_URL
         value: https://imbonesha-dashboard.vercel.app
     healthCheckPath: /health/
 
-  - type: web
-    name: imbonesha-permit
-    runtime: docker
-    dockerfilePath: mock-services/permit-service/Dockerfile
-    dockerContext: mock-services/permit-service
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-    healthCheckPath: /health
-
+  # ── Redis ─────────────────────────────────────────────────────────────────
   - type: redis
     name: imbonesha-redis
     plan: free
