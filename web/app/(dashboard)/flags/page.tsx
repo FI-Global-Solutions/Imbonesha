@@ -87,7 +87,7 @@ export default function FlagsPage() {
   const deleteFlag = useDeleteFlag();
   const deleteFlags = useDeleteFlags();
 
-  const { data, isLoading } = useFlags({ limit: 500 });
+  const { data, isLoading } = useFlags({ limit: 1000 });
   const allFlags = data?.results ?? [];
 
   // Client-side filter (search by UPI / owner / district)
@@ -113,16 +113,21 @@ export default function FlagsPage() {
       id: "select",
       header: ({ table }) => (
         <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          indeterminate={table.getIsSomePageRowsSelected()}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+          checked={
+            table.getIsAllPageRowsSelected()
+              ? true
+              : table.getIsSomePageRowsSelected()
+              ? "mixed"
+              : false
+          }
+          onCheckedChange={(v) => table.toggleAllPageRowsSelected(v === true)}
           aria-label="Select all"
         />
       ),
       cell: ({ row }) => (
         <Checkbox
           checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
+          onCheckedChange={(v) => row.toggleSelected(v === true)}
           aria-label="Select row"
           onClick={(e) => e.stopPropagation()}
         />
@@ -504,16 +509,23 @@ export default function FlagsPage() {
                     )
                     : table.getRowModel().rows.map((row) => {
                       const sev = row.original.severity;
-                      const stripeColor = sev === "critical" ? "before:bg-red-500" : sev === "high" ? "before:bg-orange-500" : sev === "medium" ? "before:bg-yellow-500" : "before:bg-slate-400/40";
+                      const stripeColor = sev === "critical" ? "bg-red-500" : sev === "high" ? "bg-orange-500" : sev === "medium" ? "bg-yellow-500" : "bg-slate-300/60";
+                      const cells = row.getVisibleCells();
                       return (
                         <TableRow
                           key={row.id}
-                          className={`group/row cursor-pointer hover:bg-accent/40 relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-[3px] before:h-[60%] before:rounded-r-full before:opacity-70 ${stripeColor}`}
+                          className="group/row cursor-pointer hover:bg-accent/40"
                           onClick={() => openDrawer(row.original.id)}
                           data-state={row.getIsSelected() ? "selected" : undefined}
                         >
-                          {row.getVisibleCells().map((cell) => (
-                            <TableCell key={cell.id} className="py-2.5">
+                          {cells.map((cell, i) => (
+                            <TableCell
+                              key={cell.id}
+                              className={`py-2.5 ${i === 0 ? "relative pl-4" : ""}`}
+                            >
+                              {i === 0 && (
+                                <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.75 h-[60%] rounded-r-full opacity-70 ${stripeColor}`} />
+                              )}
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </TableCell>
                           ))}
