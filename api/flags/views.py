@@ -922,9 +922,12 @@ class AnalyticsView(APIView):
 
     def get(self, request: Request) -> Response:
         CACHE_KEY = "analytics_summary"
-        cached = cache.get(CACHE_KEY)
-        if cached:
-            return Response(cached)
+        try:
+            cached = cache.get(CACHE_KEY)
+            if cached:
+                return Response(cached)
+        except Exception:
+            cached = None
 
         now = timezone.now()
         thirty_days_ago = now - timedelta(days=30)
@@ -1030,7 +1033,10 @@ class AnalyticsView(APIView):
             "status_breakdown": status_counts,
             "detection_throughput": throughput,
         }
-        cache.set(CACHE_KEY, payload, 60)
+        try:
+            cache.set(CACHE_KEY, payload, 60)
+        except Exception:
+            pass
         return Response(payload)
 
 

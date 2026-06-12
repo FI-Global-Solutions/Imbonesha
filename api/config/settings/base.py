@@ -98,15 +98,21 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Cache — used by the permit verification adapter to cut load on KUBAKA / mock.
-# In production we'd use Redis directly here too. Locmem is fine for dev and
-# for tests since each process gets its own cache.
+# Cache — Redis when REDIS_URL is set, local-memory fallback otherwise.
+_redis_url = env.str("REDIS_URL", default="")
 CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": env.str("REDIS_URL", default="redis://redis:6379/1"),
-        "KEY_PREFIX": "imbonesha",
-    },
+    "default": (
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _redis_url,
+            "KEY_PREFIX": "imbonesha",
+        }
+        if _redis_url
+        else {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "KEY_PREFIX": "imbonesha",
+        }
+    ),
 }
 
 # DRF
