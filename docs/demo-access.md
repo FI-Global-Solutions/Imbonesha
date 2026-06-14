@@ -1,7 +1,7 @@
 # Imbonesha Demo Access
 
 ## Dashboard
-URL: https://imbonesha-dashboard.vercel.app
+URL: https://imbonesha.vercel.app
 
 ## API
 URL: https://imbonesha-api.onrender.com
